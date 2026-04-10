@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 // ─── EASY CUSTOMIZATION ───────────────────────────────────────────────────────
 const BOUTIQUE_NAME  = "Tienda Guadalupana";
@@ -7,6 +7,8 @@ const MANAGER_PIN    = "3467";
 const STORE_PHONE    = "(901) 372-1703";
 const STORE_ADDRESS  = "4976 Summer Ave Memphis, TN 38122";
 const STORE_WEBSITE  = "";
+const SUPABASE_URL   = "https://kslsecxxhxqomrpwkauv.supabase.co";
+const SUPABASE_KEY   = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbHNlY3h4aHhxb21ycHdrYXV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDE2NTI0MzUsImV4cCI6MjA1NzIyODQzNX0.yD4KwTAzMdtV7NGFHWNV3M42RSMRdmvHYQVQdMEfVuI";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STATUSES = [
@@ -29,32 +31,58 @@ const emptyPayment = () => ({
   amount: "", date: new Date().toISOString().split("T")[0], note: "",
 });
 
-const initialOrders = [
-  {
-    id: 1, customer: "Maria Gonzalez", customer2: "", phone: "555-0101", date: "2026-02-28",
-    occasion: "Quinceañera", poNumber: "", schoolName: "", referredBy: "",
-    paymentType: "Paid in Full", discount: 0, discountType: "amount",
-    archived: false, pickupDate: "", pickedUp: false, depositDueDate: "",
-    payments: [{ id: "p1", amount: 89.99, date: "2026-02-28", note: "Full payment" }],
-    lineItems: [{ id: "a1", item: "Floral Maxi Dress", size: "M", color: "Rose", qty: 1, price: 89.99, status: "in_stock", eta: "", note: "Gift wrap requested", pickedUp: false }],
+// ─── Supabase helpers ─────────────────────────────────────────────────────────
+const sbFetch = (path, opts={}) => fetch(`${SUPABASE_URL}/rest/v1${path}`, {
+  ...opts,
+  headers: {
+    "apikey": SUPABASE_KEY,
+    "Authorization": `Bearer ${SUPABASE_KEY}`,
+    "Content-Type": "application/json",
+    "Prefer": opts.prefer || "return=representation",
+    ...opts.headers,
   },
-  {
-    id: 2, customer: "Sofia Reyes", customer2: "Ana Reyes", phone: "555-0202", date: "2026-03-01",
-    occasion: "Prom", poNumber: "PO-2024-001", schoolName: "Memphis High", referredBy: "Maria Gonzalez",
-    paymentType: "Layaway", discount: 10, discountType: "amount",
-    archived: false, pickupDate: "2026-04-01", pickedUp: false, depositDueDate: "2026-04-15",
-    payments: [
-      { id: "p2", amount: 20.00, date: "2026-03-01", note: "First payment" },
-      { id: "p3", amount: 10.00, date: "2026-03-08", note: "Second payment" },
-    ],
-    lineItems: [
-      { id: "b1", item: "Embroidered Blouse", size: "S", color: "White", qty: 2, price: 55.00, status: "to_order", eta: "", note: "", pickedUp: false },
-      { id: "b2", item: "Lace Trim Cami", size: "S", color: "Ivory", qty: 1, price: 38.00, status: "in_stock", eta: "", note: "", pickedUp: false },
-    ],
-  },
-];
+});
 
-let nextOrderId = 3;
+const dbToOrder = (r) => ({
+  id:            r.id,
+  customer:      r.customer || "",
+  customer2:     r.customer2 || "",
+  phone:         r.phone || "",
+  date:          r.date || "",
+  occasion:      r.occasion || "",
+  poNumber:      r.po_number || "",
+  schoolName:    r.school_name || "",
+  referredBy:    r.referred_by || "",
+  paymentType:   r.payment_type || "Pending",
+  discount:      parseFloat(r.discount) || 0,
+  discountType:  r.discount_type || "amount",
+  pickupDate:    r.pickup_date || "",
+  depositDueDate:r.deposit_due_date || "",
+  pickedUp:      r.picked_up || false,
+  archived:      r.archived || false,
+  payments:      r.payments || [],
+  lineItems:     r.line_items || [],
+});
+
+const orderToDb = (o) => ({
+  customer:        o.customer,
+  customer2:       o.customer2 || "",
+  phone:           o.phone || "",
+  date:            o.date || "",
+  occasion:        o.occasion || "",
+  po_number:       o.poNumber || "",
+  school_name:     o.schoolName || "",
+  referred_by:     o.referredBy || "",
+  payment_type:    o.paymentType || "Pending",
+  discount:        parseFloat(o.discount) || 0,
+  discount_type:   o.discountType || "amount",
+  pickup_date:     o.pickupDate || "",
+  deposit_due_date:o.depositDueDate || "",
+  picked_up:       o.pickedUp || false,
+  archived:        o.archived || false,
+  payments:        o.payments || [],
+  line_items:      o.lineItems || [],
+});
 
 // ─── Math helpers ─────────────────────────────────────────────────────────────
 const fmt            = (n) => `$${(+n||0).toFixed(2)}`;
@@ -188,22 +216,22 @@ function PaymentRow({ p, idx, onChange, onRemove, canRemove }) {
 
 // ─── Order Form ───────────────────────────────────────────────────────────────
 function OrderForm({ initial, onSave, onCancel }) {
-  const [customer,     setCustomer]   = useState(initial?.customer||"");
-  const [customer2,    setCustomer2]  = useState(initial?.customer2||"");
-  const [phone,        setPhone]      = useState(initial?.phone||"");
-  const [date,         setDate]       = useState(initial?.date||new Date().toISOString().split("T")[0]);
-  const [occasion,     setOccasion]   = useState(initial?.occasion||"");
-  const [poNumber,     setPoNumber]   = useState(initial?.poNumber||"");
-  const [schoolName,   setSchoolName] = useState(initial?.schoolName||"");
-  const [referredBy,   setReferredBy] = useState(initial?.referredBy||"");
-  const [paymentType,  setPayType]    = useState(initial?.paymentType||"Pending");
-  const [discount,     setDiscount]   = useState(initial?.discount??0);
-  const [discountType, setDiscType]   = useState(initial?.discountType||"amount");
-  const [pickupDate,   setPickupDate] = useState(initial?.pickupDate||"");
-  const [depositDueDate,setDepDue]    = useState(initial?.depositDueDate||"");
-  const [pickedUp,     setPickedUp]   = useState(initial?.pickedUp||false);
-  const [lineItems,    setLineItems]  = useState(initial?.lineItems?.length?initial.lineItems.map(li=>({...li})):[emptyLineItem()]);
-  const [payments,     setPayments]   = useState(initial?.payments?.length?initial.payments.map(p=>({...p})):[emptyPayment()]);
+  const [customer,      setCustomer]   = useState(initial?.customer||"");
+  const [customer2,     setCustomer2]  = useState(initial?.customer2||"");
+  const [phone,         setPhone]      = useState(initial?.phone||"");
+  const [date,          setDate]       = useState(initial?.date||new Date().toISOString().split("T")[0]);
+  const [occasion,      setOccasion]   = useState(initial?.occasion||"");
+  const [poNumber,      setPoNumber]   = useState(initial?.poNumber||"");
+  const [schoolName,    setSchoolName] = useState(initial?.schoolName||"");
+  const [referredBy,    setReferredBy] = useState(initial?.referredBy||"");
+  const [paymentType,   setPayType]    = useState(initial?.paymentType||"Pending");
+  const [discount,      setDiscount]   = useState(initial?.discount??0);
+  const [discountType,  setDiscType]   = useState(initial?.discountType||"amount");
+  const [pickupDate,    setPickupDate] = useState(initial?.pickupDate||"");
+  const [depositDueDate,setDepDue]     = useState(initial?.depositDueDate||"");
+  const [pickedUp,      setPickedUp]   = useState(initial?.pickedUp||false);
+  const [lineItems,     setLineItems]  = useState(initial?.lineItems?.length?initial.lineItems.map(li=>({...li})):[emptyLineItem()]);
+  const [payments,      setPayments]   = useState(initial?.payments?.length?initial.payments.map(p=>({...p})):[emptyPayment()]);
 
   const updateLI  = (idx,k,v) => setLineItems(p=>p.map((li,i)=>i===idx?{...li,[k]:v}:li));
   const addLI     = () => setLineItems(p=>[...p,emptyLineItem()]);
@@ -224,8 +252,6 @@ function OrderForm({ initial, onSave, onCancel }) {
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-
-      {/* Customer Info */}
       <div style={{ background:"#0a1520", border:"1px solid #c9a96e18", borderRadius:10, padding:14 }}>
         <div style={{ fontSize:11, color:"#c9a96e", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>Customer Info</div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
@@ -254,7 +280,6 @@ function OrderForm({ initial, onSave, onCancel }) {
         </label>
       </div>
 
-      {/* Items */}
       <div>
         <div style={{ fontSize:11, color:"#c9a96e", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>Items ({lineItems.length})</div>
         <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
@@ -263,7 +288,6 @@ function OrderForm({ initial, onSave, onCancel }) {
         <button onClick={addLI} style={{ marginTop:10, background:"none", border:"1px dashed #c9a96e55", color:"#c9a96e", borderRadius:8, padding:"9px 16px", cursor:"pointer", fontSize:12, fontWeight:700, width:"100%" }}>+ Add Another Item</button>
       </div>
 
-      {/* Discount */}
       <div style={{ background:"#0a1520", border:"1px solid #818cf818", borderRadius:10, padding:14 }}>
         <div style={{ fontSize:11, color:"#818cf8", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>Discount</div>
         <div style={{ display:"grid", gridTemplateColumns:"auto 1fr 2fr", gap:10, alignItems:"end" }}>
@@ -279,7 +303,7 @@ function OrderForm({ initial, onSave, onCancel }) {
           </div>
           <div>
             <label style={LS}>{discountType==="amount"?"Amount ($)":"Percentage (%)"}</label>
-            <input style={{ ...IS, border:"1px solid #818cf833" }} type="number" step="0.01" min="0" max={discountType==="percent"?100:undefined}
+            <input style={{ ...IS, border:"1px solid #818cf833" }} type="number" step="0.01" min="0"
               value={discount} onChange={e=>setDiscount(e.target.value)} placeholder={discountType==="amount"?"0.00":"0"} />
           </div>
           <div style={{ background:"#070d14", border:"1px solid #818cf822", borderRadius:8, padding:"10px 14px" }}>
@@ -290,7 +314,6 @@ function OrderForm({ initial, onSave, onCancel }) {
         </div>
       </div>
 
-      {/* Payments */}
       <div style={{ background:"#0a1520", border:"1px solid #4ade8018", borderRadius:10, padding:14 }}>
         <div style={{ fontSize:11, color:"#4ade80", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>Payments ({payments.length})</div>
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -300,7 +323,7 @@ function OrderForm({ initial, onSave, onCancel }) {
         <div style={{ marginTop:12, background:"#070d14", border:"1px solid #c9a96e18", borderRadius:8, padding:"10px 14px", display:"flex", flexDirection:"column", gap:5 }}>
           {[
             { label:"Subtotal", val:fmt(subtotal), color:"#94a3b8", big:false },
-            ...(discAmt>0?[{label:`Discount`,val:`-${fmt(discAmt)}`,color:"#818cf8",big:false}]:[]),
+            ...(discAmt>0?[{label:"Discount",val:`-${fmt(discAmt)}`,color:"#818cf8",big:false}]:[]),
             ...(discAmt>0?[{label:"After Discount",val:fmt(afterDisc),color:"#94a3b8",big:false}]:[]),
             { label:`Tax (${(TAX_RATE*100).toFixed(2)}%)`, val:fmt(tax), color:"#94a3b8", big:false },
             { label:"Total", val:fmt(total), color:"#c9a96e", big:true },
@@ -315,7 +338,6 @@ function OrderForm({ initial, onSave, onCancel }) {
         </div>
       </div>
 
-      {/* Payment status */}
       <div><label style={LS}>Payment Status</label>
         <select style={{ background:"#070d14", border:"1px solid #c9a96e22", borderRadius:8, color:"#e2d5c0", padding:"8px 12px", fontSize:13, outline:"none", boxSizing:"border-box", width:"100%" }}
           value={paymentType} onChange={e=>setPayType(e.target.value)}>
@@ -341,27 +363,20 @@ function OrderForm({ initial, onSave, onCancel }) {
 
 // ─── Print Receipt ────────────────────────────────────────────────────────────
 function printReceipt(o) {
-  const items     = o.lineItems||[];
-  const pmts      = o.payments||[];
-  const subtotal  = orderSubtotal(o);
-  const discount  = orderDiscount(o);
-  const afterDisc = orderAfterDisc(o);
-  const tax       = orderTax(o);
-  const total     = orderTotal(o);
-  const paid      = totalPaid(o);
-  const balance   = orderBalance(o);
-  const slabel    = (key)=>STATUSES.find(s=>s.key===key)?.label||key;
-  const win = window.open("","_blank");
+  const items=o.lineItems||[], pmts=o.payments||[];
+  const subtotal=orderSubtotal(o), discount=orderDiscount(o), afterDisc=orderAfterDisc(o);
+  const tax=orderTax(o), total=orderTotal(o), paid=totalPaid(o), balance=orderBalance(o);
+  const slabel=(key)=>STATUSES.find(s=>s.key===key)?.label||key;
+  const win=window.open("","_blank");
   win.document.write(`<!DOCTYPE html><html><head>
     <title>Receipt - ${o.customer}</title>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet"/>
     <style>
-      *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'DM Sans',sans-serif;color:#1a1a2e;padding:36px;max-width:660px;margin:0 auto;font-size:13px}
+      *{box-sizing:border-box;margin:0;padding:0}body{font-family:'DM Sans',sans-serif;color:#1a1a2e;padding:36px;max-width:660px;margin:0 auto;font-size:13px}
       .hdr{text-align:center;border-bottom:3px solid #c9a96e;padding-bottom:18px;margin-bottom:20px}
       .hdr h1{font-family:'Playfair Display',serif;font-size:28px;color:#a87c40;margin-bottom:4px}
-      .hdr .sub{color:#64748b;font-size:11px;letter-spacing:.08em}
       .hdr .addr{color:#1a1a2e;font-size:12px;margin-top:6px;line-height:1.6}
+      .hdr .sub{color:#64748b;font-size:11px;letter-spacing:.08em;margin-top:4px}
       .sec{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#a87c40;margin:18px 0 8px;padding-bottom:4px;border-bottom:1px solid #f0e6d0}
       .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#fdf8f0;border-radius:8px;padding:12px}
       .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;background:#fdf8f0;border-radius:8px;padding:12px}
@@ -389,47 +404,34 @@ function printReceipt(o) {
       .ft{text-align:center;margin-top:20px;padding-top:14px;border-top:1px solid #e8d5a3;font-size:11px;color:#94a3b8;line-height:1.8}
       @media print{button{display:none}}
     </style></head><body>
-
     <div class="hdr">
       <h1>✦ ${BOUTIQUE_NAME}</h1>
-      <div class="addr">${STORE_ADDRESS}<br/>${STORE_PHONE}${STORE_WEBSITE?`<br/>${STORE_WEBSITE}`:""}</div>
-      <div class="sub" style="margin-top:8px">SALES RECEIPT · ${o.date||""}</div>
+      <div class="addr">${STORE_ADDRESS}<br/>${STORE_PHONE}</div>
+      <div class="sub">SALES RECEIPT · ${o.date||""}</div>
     </div>
-
     <div class="sec">Customer Information</div>
     <div class="grid3">
       <div class="f"><label>Name</label><span>${o.customer||"—"}</span></div>
       ${o.customer2?`<div class="f"><label>2nd Name</label><span>${o.customer2}</span></div>`:`<div></div>`}
       <div class="f"><label>Phone</label><span>${o.phone||"—"}</span></div>
     </div>
-
     <div class="sec">Items Ordered</div>
-    <table>
-      <thead><tr><th>Item</th><th>Size / Color</th><th>Qty</th><th>Price</th><th>Status</th></tr></thead>
-      <tbody>
-        ${items.map(li=>`<tr>
-          <td><div class="iname">${li.item||"—"}</div>${li.note?`<div class="note">Note: ${li.note}</div>`:""}${li.pickedUp?`<div class="pickup-tag">✓ Picked Up</div>`:""}</td>
-          <td style="color:#64748b">${[li.size,li.color].filter(Boolean).join(" / ")||"—"}</td>
-          <td>${li.qty}</td>
-          <td>${fmt((parseFloat(li.price)||0)*(parseInt(li.qty)||1))}</td>
-          <td><span class="badge">${slabel(li.status)}</span>${li.eta?`<div style="font-size:10px;color:#64748b;margin-top:2px">ETA: ${li.eta}</div>`:""}</td>
-        </tr>`).join("")}
-      </tbody>
-    </table>
-
+    <table><thead><tr><th>Item</th><th>Size / Color</th><th>Qty</th><th>Price</th><th>Status</th></tr></thead><tbody>
+      ${items.map(li=>`<tr>
+        <td><div class="iname">${li.item||"—"}</div>${li.note?`<div class="note">Note: ${li.note}</div>`:""}${li.pickedUp?`<div class="pickup-tag">✓ Picked Up</div>`:""}</td>
+        <td style="color:#64748b">${[li.size,li.color].filter(Boolean).join(" / ")||"—"}</td>
+        <td>${li.qty}</td><td>${fmt((parseFloat(li.price)||0)*(parseInt(li.qty)||1))}</td>
+        <td><span class="badge">${slabel(li.status)}</span>${li.eta?`<div style="font-size:10px;color:#64748b;margin-top:2px">ETA: ${li.eta}</div>`:""}</td>
+      </tr>`).join("")}
+    </tbody></table>
     <div class="sec">Payment History</div>
-    <table>
-      <thead><tr><th>#</th><th>Date</th><th>Amount</th><th>Note</th></tr></thead>
-      <tbody>
-        ${pmts.map((p,i)=>`<tr>
-          <td style="color:#64748b">${i+1}</td>
-          <td>${p.date||"—"}</td>
-          <td class="green" style="font-weight:700">${fmt(parseFloat(p.amount))}</td>
-          <td style="color:#64748b;font-style:italic">${p.note||"—"}</td>
-        </tr>`).join("")}
-      </tbody>
-    </table>
-
+    <table><thead><tr><th>#</th><th>Date</th><th>Amount</th><th>Note</th></tr></thead><tbody>
+      ${pmts.map((p,i)=>`<tr>
+        <td style="color:#64748b">${i+1}</td><td>${p.date||"—"}</td>
+        <td class="green" style="font-weight:700">${fmt(parseFloat(p.amount))}</td>
+        <td style="color:#64748b;font-style:italic">${p.note||"—"}</td>
+      </tr>`).join("")}
+    </tbody></table>
     <div class="tot">
       <div class="tr"><span class="l">Subtotal</span><span>${fmt(subtotal)}</span></div>
       ${discount>0?`<div class="tr"><span class="l purple">Discount Applied</span><span class="purple">-${fmt(discount)}</span></div>`:""}
@@ -441,9 +443,7 @@ function printReceipt(o) {
       <div class="tr div big"><span class="l">Balance Due</span><span class="${balance>0?"red":"green"}">${fmt(balance)}</span></div>
       ${o.pickedUp?`<div class="tr" style="margin-top:8px"><span style="color:#065f46;font-weight:700">✓ Order fully picked up</span></div>`:""}
     </div>
-
     ${o.depositDueDate?`<div class="due-box">📅 <strong>Next Payment Due: ${o.depositDueDate}</strong> — Please ensure timely payments to hold your order. Quinceañera dresses require full payment within 3 months of order date or by the agreed pickup date.</div>`:""}
-
     <div class="policy">
       <div class="ptitle">⚠ Store Policy — Please Read Before Signing</div>
       <strong>NO REFUNDS · NO EXCHANGES · ALL SALES ARE FINAL</strong><br/>
@@ -451,26 +451,14 @@ function printReceipt(o) {
       <strong>SIN REEMBOLSOS · SIN CAMBIOS · TODAS LAS VENTAS SON FINALES</strong><br/>
       Al firmar, el cliente reconoce que todas las compras son finales. No se aceptarán devoluciones, cambios ni reembolsos por ningún motivo. Los pagos de layaway y depósito no son reembolsables.
     </div>
-
     <div class="sig">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:10px">
-        <div>
-          <div class="sig-line"></div>
-          <div class="sig-label">Customer Signature / Firma del Cliente</div>
-        </div>
-        <div>
-          <div class="sig-line"></div>
-          <div class="sig-label">Date / Fecha</div>
-        </div>
+        <div><div class="sig-line"></div><div class="sig-label">Customer Signature / Firma del Cliente</div></div>
+        <div><div class="sig-line"></div><div class="sig-label">Date / Fecha</div></div>
       </div>
       ${o.customer2?`<div style="margin-top:24px"><div class="sig-line"></div><div class="sig-label">2nd Signature (${o.customer2})</div></div>`:""}
     </div>
-
-    <div class="ft">
-      Thank you for shopping at ${BOUTIQUE_NAME}!<br/>
-      ${STORE_PHONE} · ${STORE_ADDRESS}
-    </div>
-
+    <div class="ft">Thank you for shopping at ${BOUTIQUE_NAME}!<br/>${STORE_PHONE} · ${STORE_ADDRESS}</div>
     <script>window.onload=()=>window.print();</script>
   </body></html>`);
   win.document.close();
@@ -478,7 +466,9 @@ function printReceipt(o) {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function BoutiqueTracker() {
-  const [orders,        setOrders]       = useState(initialOrders);
+  const [orders,        setOrders]       = useState([]);
+  const [loading,       setLoading]      = useState(true);
+  const [error,         setError]        = useState(null);
   const [activeTab,     setActiveTab]    = useState("active");
   const [showAdd,       setShowAdd]      = useState(false);
   const [editOrder,     setEditOrder]    = useState(null);
@@ -490,28 +480,84 @@ export default function BoutiqueTracker() {
   const [showPin,       setShowPin]      = useState(false);
   const [pinUnlocked,   setPinUnlocked]  = useState(false);
 
+  // ── Load orders from Supabase ──
+  useEffect(()=>{
+    loadOrders();
+  },[]);
+
+  const loadOrders = async () => {
+    setLoading(true); setError(null);
+    try {
+      const res = await sbFetch("/orders?order=created_at.asc", { prefer:"" });
+      if (!res.ok) throw new Error("Failed to load");
+      const data = await res.json();
+      setOrders(data.map(dbToOrder));
+    } catch(e) {
+      setError("Could not connect to database. Check your internet connection.");
+    } finally { setLoading(false); }
+  };
+
+  const saveNew = async (form) => {
+    try {
+      const res = await sbFetch("/orders", { method:"POST", body:JSON.stringify(orderToDb(form)) });
+      if (!res.ok) throw new Error("Save failed");
+      const [row] = await res.json();
+      setOrders(p=>[...p, dbToOrder(row)]);
+      setShowAdd(false);
+    } catch(e) { alert("Error saving order. Please try again."); }
+  };
+
+  const saveEdit = async (form) => {
+    try {
+      const res = await sbFetch(`/orders?id=eq.${editOrder.id}`, { method:"PATCH", body:JSON.stringify(orderToDb(form)) });
+      if (!res.ok) throw new Error("Update failed");
+      const [row] = await res.json();
+      setOrders(p=>p.map(o=>o.id===editOrder.id?dbToOrder(row):o));
+      setEditOrder(null);
+    } catch(e) { alert("Error updating order. Please try again."); }
+  };
+
+  const deleteOrder = async (id) => {
+    try {
+      await sbFetch(`/orders?id=eq.${id}`, { method:"DELETE", prefer:"" });
+      setOrders(p=>p.filter(o=>o.id!==id));
+      setDeleteConfirm(null); setViewOrder(null);
+    } catch(e) { alert("Error deleting order."); }
+  };
+
+  const archiveOrder = async (id) => {
+    try {
+      const res = await sbFetch(`/orders?id=eq.${id}`, { method:"PATCH", body:JSON.stringify({ archived:true }) });
+      const [row] = await res.json();
+      setOrders(p=>p.map(o=>o.id===id?dbToOrder(row):o));
+      setViewOrder(null);
+    } catch(e) { alert("Error archiving order."); }
+  };
+
+  const unarchive = async (id) => {
+    try {
+      const res = await sbFetch(`/orders?id=eq.${id}`, { method:"PATCH", body:JSON.stringify({ archived:false }) });
+      const [row] = await res.json();
+      setOrders(p=>p.map(o=>o.id===id?dbToOrder(row):o));
+      setViewOrder(null);
+    } catch(e) { alert("Error restoring order."); }
+  };
+
   const activeOrders   = useMemo(()=>orders.filter(o=>!o.archived),[orders]);
   const archivedOrders = useMemo(()=>orders.filter(o=>o.archived),[orders]);
 
   const filtered = useMemo(()=>{
     const pool = activeTab==="archived"?archivedOrders:activeOrders;
     return pool.filter(o=>{
-      const q = search.toLowerCase();
-      const matchSearch = !q
-        ||(o.customer||"").toLowerCase().includes(q)
-        ||(o.customer2||"").toLowerCase().includes(q)
-        ||(o.phone||"").includes(q)
-        ||(o.poNumber||"").toLowerCase().includes(q)
-        ||(o.schoolName||"").toLowerCase().includes(q)
-        ||(o.referredBy||"").toLowerCase().includes(q)
-        ||(o.lineItems||[]).some(li=>(li.item||"").toLowerCase().includes(q));
-      const matchStatus   = filterStatus==="all"||(o.lineItems||[]).some(li=>li.status===filterStatus);
-      const matchOccasion = filterOccasion==="all"||o.occasion===filterOccasion;
-      return matchSearch && matchStatus && matchOccasion;
+      const q=search.toLowerCase();
+      const matchSearch=!q||(o.customer||"").toLowerCase().includes(q)||(o.customer2||"").toLowerCase().includes(q)||(o.phone||"").includes(q)||(o.poNumber||"").toLowerCase().includes(q)||(o.schoolName||"").toLowerCase().includes(q)||(o.referredBy||"").toLowerCase().includes(q)||(o.lineItems||[]).some(li=>(li.item||"").toLowerCase().includes(q));
+      const matchStatus=filterStatus==="all"||(o.lineItems||[]).some(li=>li.status===filterStatus);
+      const matchOcc=filterOccasion==="all"||o.occasion===filterOccasion;
+      return matchSearch&&matchStatus&&matchOcc;
     });
   },[orders,activeTab,search,filterStatus,filterOccasion,activeOrders,archivedOrders]);
 
-  const totals = useMemo(()=>({
+  const totals=useMemo(()=>({
     orders:  activeOrders.length,
     layaway: activeOrders.filter(o=>o.paymentType==="Layaway"||o.paymentType==="Deposit").length,
     subtotal:activeOrders.reduce((s,o)=>s+orderSubtotal(o),0),
@@ -522,13 +568,7 @@ export default function BoutiqueTracker() {
     owed:    activeOrders.reduce((s,o)=>s+orderBalance(o),0),
   }),[activeOrders]);
 
-  const saveNew     = (form) => { setOrders(p=>[...p,{...form,id:nextOrderId++}]); setShowAdd(false); };
-  const saveEdit    = (form) => { setOrders(p=>p.map(o=>o.id===editOrder.id?{...form,id:o.id}:o)); setEditOrder(null); };
-  const deleteOrder = (id)   => { setOrders(p=>p.filter(o=>o.id!==id)); setDeleteConfirm(null); setViewOrder(null); };
-  const archiveOrder= (id)   => { setOrders(p=>p.map(o=>o.id===id?{...o,archived:true}:o)); setViewOrder(null); };
-  const unarchive   = (id)   => setOrders(p=>p.map(o=>o.id===id?{...o,archived:false}:o));
-
-  const TABS = [
+  const TABS=[
     { key:"active",     label:`Active (${activeOrders.length})` },
     { key:"archived",   label:`Past Customers (${archivedOrders.length})` },
     { key:"financials", label:"📊 Financials" },
@@ -547,6 +587,11 @@ export default function BoutiqueTracker() {
         <button onClick={()=>setShowAdd(true)} style={{ background:"linear-gradient(135deg,#c9a96e,#a87c40)", border:"none", borderRadius:10, padding:"10px 22px", color:"#0a0e14", fontWeight:800, fontSize:13, cursor:"pointer", boxShadow:"0 4px 20px #c9a96e33" }}>+ New Order</button>
       </div>
 
+      {/* Error banner */}
+      {error&&<div style={{ background:"#fb718522", border:"1px solid #fb718544", color:"#fb7185", padding:"10px 24px", fontSize:13, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        {error} <button onClick={loadOrders} style={{ background:"#fb7185", border:"none", color:"#fff", borderRadius:6, padding:"4px 12px", cursor:"pointer", fontSize:12 }}>Retry</button>
+      </div>}
+
       {/* Always-visible stats */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:10, padding:"16px 24px 0" }}>
         {[
@@ -555,18 +600,16 @@ export default function BoutiqueTracker() {
         ].map(s=>(
           <div key={s.label} style={{ background:"#0a1520", border:"1px solid #c9a96e18", borderRadius:12, padding:"12px 14px" }}>
             <div style={{ fontSize:10, color:"#64748b", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>{s.label}</div>
-            <div style={{ fontSize:22, fontWeight:800, color:s.col, fontFamily:"'Playfair Display',serif" }}>{s.val}</div>
+            <div style={{ fontSize:22, fontWeight:800, color:s.col, fontFamily:"'Playfair Display',serif" }}>{loading?"…":s.val}</div>
           </div>
         ))}
       </div>
 
       {/* Tabs */}
-      <div style={{ display:"flex", gap:0, padding:"16px 24px 0", borderBottom:"1px solid #c9a96e18", flexWrap:"wrap" }}>
+      <div style={{ display:"flex", padding:"16px 24px 0", borderBottom:"1px solid #c9a96e18", flexWrap:"wrap" }}>
         {TABS.map(t=>(
           <button key={t.key} onClick={()=>{ if(t.key==="financials"&&!pinUnlocked){ setShowPin(true); } else { setActiveTab(t.key); } }}
-            style={{ padding:"10px 18px", fontSize:12, fontWeight:700, cursor:"pointer", border:"none",
-              borderBottom:activeTab===t.key?"2px solid #c9a96e":"2px solid transparent",
-              background:"transparent", color:activeTab===t.key?"#c9a96e":"#64748b", transition:"all 0.15s" }}>
+            style={{ padding:"10px 18px", fontSize:12, fontWeight:700, cursor:"pointer", border:"none", borderBottom:activeTab===t.key?"2px solid #c9a96e":"2px solid transparent", background:"transparent", color:activeTab===t.key?"#c9a96e":"#64748b", transition:"all 0.15s" }}>
             {t.label}{t.key==="financials"&&!pinUnlocked?" 🔒":""}
           </button>
         ))}
@@ -581,12 +624,12 @@ export default function BoutiqueTracker() {
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:12 }}>
             {[
-              { label:"Subtotal",     val:fmt(totals.subtotal),         col:"#818cf8" },
-              { label:"Discounts",    val:`-${fmt(totals.discount)}`,   col:"#a78bfa" },
-              { label:"Tax (9.75%)",  val:fmt(totals.tax),              col:"#f59e0b" },
-              { label:"Total w/ Tax", val:fmt(totals.value),            col:"#e2d5c0" },
-              { label:"Received",     val:fmt(totals.paid),             col:"#4ade80" },
-              { label:"Balance Owed", val:fmt(totals.owed),             col:"#fb7185" },
+              { label:"Subtotal",     val:fmt(totals.subtotal),       col:"#818cf8" },
+              { label:"Discounts",    val:`-${fmt(totals.discount)}`, col:"#a78bfa" },
+              { label:"Tax (9.75%)",  val:fmt(totals.tax),            col:"#f59e0b" },
+              { label:"Total w/ Tax", val:fmt(totals.value),          col:"#e2d5c0" },
+              { label:"Received",     val:fmt(totals.paid),           col:"#4ade80" },
+              { label:"Balance Owed", val:fmt(totals.owed),           col:"#fb7185" },
             ].map(s=>(
               <div key={s.label} style={{ background:"#0a1520", border:"1px solid #c9a96e18", borderRadius:12, padding:16 }}>
                 <div style={{ fontSize:10, color:"#64748b", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6 }}>{s.label}</div>
@@ -597,10 +640,9 @@ export default function BoutiqueTracker() {
         </div>
       )}
 
-      {/* Orders List */}
+      {/* Orders list */}
       {activeTab!=="financials"&&(
         <>
-          {/* Filters */}
           <div style={{ padding:"14px 24px", display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
             <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍  Search name, phone, PO#, school, referral…"
               style={{ flex:1, minWidth:220, background:"#0a1520", border:"1px solid #c9a96e33", borderRadius:8, color:"#e2d5c0", padding:"8px 14px", fontSize:13, outline:"none" }} />
@@ -617,15 +659,19 @@ export default function BoutiqueTracker() {
             ))}
           </div>
 
-          {/* Cards */}
           <div style={{ padding:"0 24px 40px", display:"flex", flexDirection:"column", gap:10 }}>
-            {filtered.length===0?(
+            {loading?(
+              <div style={{ textAlign:"center", padding:60, color:"#64748b" }}>
+                <div style={{ fontSize:30, marginBottom:12 }}>✦</div>
+                <div>Loading orders…</div>
+              </div>
+            ):filtered.length===0?(
               <div style={{ textAlign:"center", padding:60, color:"#334155" }}>
                 <div style={{ fontSize:40, marginBottom:12 }}>✦</div>
                 <div style={{ fontSize:14 }}>{activeTab==="archived"?"No past customers yet":"No orders found"}</div>
               </div>
             ):filtered.map(o=>{
-              const subtotal=orderSubtotal(o), tax=orderTax(o), total=orderTotal(o), paid=totalPaid(o), balance=orderBalance(o), discount=orderDiscount(o);
+              const subtotal=orderSubtotal(o),tax=orderTax(o),total=orderTotal(o),paid=totalPaid(o),balance=orderBalance(o),discount=orderDiscount(o);
               const allPickedUp=(o.lineItems||[]).length>0&&(o.lineItems||[]).every(li=>li.pickedUp);
               return (
                 <div key={o.id} style={{ background:"#0a1520", border:`1px solid ${o.archived?"#4ade8022":"#c9a96e18"}`, borderRadius:14, overflow:"hidden", cursor:"pointer" }} onClick={()=>setViewOrder(o)}>
@@ -694,8 +740,8 @@ export default function BoutiqueTracker() {
 
       {viewOrder&&(()=>{
         const o=orders.find(x=>x.id===viewOrder.id)||viewOrder;
-        const items=o.lineItems||[], pmts=o.payments||[];
-        const subtotal=orderSubtotal(o), discount=orderDiscount(o), afterDisc=orderAfterDisc(o), tax=orderTax(o), total=orderTotal(o), paid=totalPaid(o), balance=orderBalance(o);
+        const items=o.lineItems||[],pmts=o.payments||[];
+        const subtotal=orderSubtotal(o),discount=orderDiscount(o),afterDisc=orderAfterDisc(o),tax=orderTax(o),total=orderTotal(o),paid=totalPaid(o),balance=orderBalance(o);
         return (
           <Modal title="Order Details" onClose={()=>setViewOrder(null)} wide>
             <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
@@ -715,7 +761,6 @@ export default function BoutiqueTracker() {
                 <PayBadge type={o.paymentType} />
                 {o.pickedUp&&<span style={{ fontSize:11, background:"#4ade8022", color:"#4ade80", border:"1px solid #4ade8033", borderRadius:20, padding:"2px 10px", fontWeight:700 }}>✓ Fully Picked Up</span>}
               </div>
-
               <div>
                 <div style={{ fontSize:11, color:"#c9a96e", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>Items ({items.length})</div>
                 <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
@@ -737,7 +782,6 @@ export default function BoutiqueTracker() {
                   })}
                 </div>
               </div>
-
               <div>
                 <div style={{ fontSize:11, color:"#4ade80", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>Payments ({pmts.length})</div>
                 <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
@@ -752,7 +796,6 @@ export default function BoutiqueTracker() {
                   ))}
                 </div>
               </div>
-
               <div style={{ background:"#0a1520", border:"1px solid #c9a96e22", borderRadius:10, padding:16 }}>
                 <div style={{ fontSize:11, color:"#c9a96e", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>Order Summary</div>
                 {[
@@ -770,12 +813,11 @@ export default function BoutiqueTracker() {
                   </div>
                 ))}
               </div>
-
               <div style={{ display:"flex", gap:10, justifyContent:"flex-end", flexWrap:"wrap" }}>
                 <button onClick={()=>printReceipt(o)} style={ABL("#c9a96e")}>🖨️ Print / PDF</button>
                 {!o.archived&&<button onClick={()=>{ setViewOrder(null); setEditOrder(o); }} style={ABL("#818cf8")}>Edit</button>}
                 {!o.archived&&<button onClick={()=>archiveOrder(o.id)} style={ABL("#4ade80")}>✓ File Away</button>}
-                {o.archived&&<button onClick={()=>{ unarchive(o.id); setViewOrder(null); }} style={ABL("#4ade80")}>Restore to Active</button>}
+                {o.archived&&<button onClick={()=>unarchive(o.id)} style={ABL("#4ade80")}>Restore to Active</button>}
                 <button onClick={()=>setDeleteConfirm(o)} style={ABL("#fb7185")}>Delete</button>
               </div>
             </div>

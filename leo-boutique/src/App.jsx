@@ -20,7 +20,8 @@ const STATUSES = [
   { key: "alterations", label: "Needs Alterations",  color: "#f472b6", bg: "#3b0a2a" },
   { key: "ready",       label: "Ready to Pick Up",   color: "#fbbf24", bg: "#3b2a00" },
   { key: "on_hold",     label: "On Hold",            color: "#94a3b8", bg: "#1e293b" },
-  { key: "cancelled",   label: "Cancelled",          color: "#f87171", bg: "#2d1515" },
+  { key: "cancelled",   label: "Cancelled",         color: "#f87171", bg: "#2d1515" },
+{ key: "to_make",     label: "To Make",           color: "#c084fc", bg: "#2e1a47" },
 ];
 const PAYMENT_TYPES = ["Paid in Full", "Layaway", "Deposit", "Pending"];
 const OCCASIONS     = ["Quinceañera", "Prom", "Baptism", "Communion", "Wedding", "Party", "Other"];

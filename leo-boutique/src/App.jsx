@@ -8,7 +8,7 @@ const STORE_PHONE    = "(901) 372-1703";
 const STORE_ADDRESS  = "4976 Summer Ave Memphis, TN 38122";
 const STORE_WEBSITE  = "";
 const SUPABASE_URL   = "https://kslsecxxhxqomrpwkauv.supabase.co";
-const SUPABASE_KEY   = "sb_publishable_57IzIPBosbG4vIzewYJbjA_OkIjfXOK";
+const SUPABASE_KEY   = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbHNlY3h4aHhxb21ycHdrYXV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwODk2NTgsImV4cCI6MjA4ODY2NTY1OH0.ikf8LbjaYQBcazDJ0m34ZXHMx4py44hHkpUReGJdEYs";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STATUSES = [
@@ -20,7 +20,7 @@ const STATUSES = [
   { key: "alterations", label: "Needs Alterations",  color: "#f472b6", bg: "#3b0a2a" },
   { key: "ready",       label: "Ready to Pick Up",   color: "#fbbf24", bg: "#3b2a00" },
   { key: "on_hold",     label: "On Hold",            color: "#94a3b8", bg: "#1e293b" },
-  { key: "to_make",     label: "To Make",            color: "#c084fc", bg: "#2e1a47" },
+  { key: "cancelled",   label: "Cancelled",          color: "#f87171", bg: "#2d1515" },
 ];
 const PAYMENT_TYPES = ["Paid in Full", "Layaway", "Deposit", "Pending"];
 const OCCASIONS     = ["Quinceañera", "Damas", "Prom", "Baptism", "Communion", "Wedding", "Party", "Other"];
@@ -633,10 +633,38 @@ export default function BoutiqueTracker() {
     }, ...p]);
   };
 
-  // ── Load orders from Supabase ──
+  // ── Load orders and appointments from Supabase ──
   useEffect(()=>{
     loadOrders();
+    loadAppointments();
   },[]);
+
+  const loadAppointments = async () => {
+    try {
+      const res = await sbFetch("/appointments?order=date.asc", { prefer:"" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setAppointments(data.map(r=>({ id:r.id, label:r.label, date:r.date, time:r.time||"", type:r.type||"appointment" })));
+    } catch(e) { console.error("Could not load appointments"); }
+  };
+
+  const saveAppointment = async (appt) => {
+    try {
+      const res = await sbFetch("/appointments", { method:"POST", body:JSON.stringify({ label:appt.label, date:appt.date, time:appt.time||"", type:appt.type||"appointment" }) });
+      if (!res.ok) throw new Error("Save failed");
+      const [row] = await res.json();
+      setAppointments(p=>[...p, { id:row.id, label:row.label, date:row.date, time:row.time||"", type:row.type }]);
+      logActivity("📅", `Appointment added — ${appt.label}`, "");
+    } catch(e) { alert("Error saving appointment."); }
+  };
+
+  const deleteAppointment = async (id) => {
+    try {
+      await sbFetch(`/appointments?id=eq.${id}`, { method:"DELETE", prefer:"" });
+      setAppointments(p=>p.filter(a=>a.id!==id));
+      logActivity("🗑️", "Appointment removed", "");
+    } catch(e) { alert("Error deleting appointment."); }
+  };
 
   const loadOrders = async () => {
     setLoading(true); setError(null);
@@ -1007,8 +1035,8 @@ export default function BoutiqueTracker() {
 
         const upcoming=[...activeOrders.filter(o=>o.pickupDate).map(o=>({ date:o.pickupDate, label:`Pickup: ${o.customer}`, color:"#4ade80" })),
           ...activeOrders.filter(o=>o.depositDueDate).map(o=>({ date:o.depositDueDate, label:`Payment Due: ${o.customer}`, color:"#fb7185" })),
-          ...appointments.map(a=>({ date:a.date, label:a.label, color:"#818cf8" }))
-        ].filter(e=>e.date>=todayStr).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,6);
+          ...appointments.map(a=>({ date:a.date, label:a.label, color:"#818cf8", apptId:a.id }))
+        ].filter(e=>e.date>=todayStr).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,10);
 
         return (
           <div style={{ padding:"20px 24px 40px" }}>
@@ -1074,7 +1102,10 @@ export default function BoutiqueTracker() {
                     <div style={{ width:8, height:8, borderRadius:"50%", background:e.color, flexShrink:0 }}></div>
                     <span style={{ fontSize:13, color:"#e2d5c0" }}>{e.label}</span>
                   </div>
-                  <span style={{ fontSize:11, color:"#64748b" }}>{e.date}</span>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <span style={{ fontSize:11, color:"#64748b" }}>{e.date}</span>
+                    {e.apptId&&<button onClick={()=>deleteAppointment(e.apptId)} style={{ background:"#fb718518", border:"1px solid #fb718533", color:"#fb7185", borderRadius:4, padding:"2px 6px", fontSize:10, cursor:"pointer" }}>✕</button>}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1089,7 +1120,7 @@ export default function BoutiqueTracker() {
               <div style={{ position:"fixed", inset:0, background:"#000000cc", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }} onClick={()=>setShowApptForm(null)}>
                 <div style={{ background:"#0f1923", border:"1px solid #818cf833", borderRadius:16, padding:28, maxWidth:400, width:"100%" }} onClick={e=>e.stopPropagation()}>
                   <div style={{ fontFamily:"'Playfair Display',serif", color:"#818cf8", fontSize:18, marginBottom:16 }}>Add Appointment</div>
-                  <ApptForm date={showApptForm} onSave={(appt)=>{ setAppointments(p=>[...p,{...appt,id:Math.random().toString(36).slice(2)}]); setShowApptForm(null); }} onClose={()=>setShowApptForm(null)} />
+                  <ApptForm date={showApptForm} onSave={(appt)=>{ saveAppointment(appt); setShowApptForm(null); }} onClose={()=>setShowApptForm(null)} />
                 </div>
               </div>
             )}

@@ -243,7 +243,7 @@ function LineItemRow({ li, idx, onChange, onRemove, canRemove }) {
           Paid
         </label>
       </div>
-      {/* Padrino / Retainer */}
+ {/* Padrino / Retainer */}
       <div style={{ background:"#070d14", border:"1px solid #f472b622", borderRadius:8, padding:10 }}>
         <div style={{ fontSize:10, color:"#f472b6", fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>Padrino / Retainer (optional)</div>
         <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:8 }}>
@@ -251,10 +251,29 @@ function LineItemRow({ li, idx, onChange, onRemove, canRemove }) {
           <div><label style={LS}>Amount Paid ($)</label><input style={{ ...IS, border:"1px solid #f472b622" }} type="number" step="0.01" value={li.padrinoAmount||""} onChange={e=>inp("padrinoAmount",e.target.value)} placeholder="0.00" /></div>
         </div>
       </div>
-    </div>
-  );
-}
-
+      {/* Item payment & balance */}
+      <div style={{ background:"#070d14", border:"1px solid #818cf822", borderRadius:8, padding:10 }}>
+        <div style={{ fontSize:10, color:"#818cf8", fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>Item Payment / Balance</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:8 }}>
+          <div><label style={LS}>Amount Paid on This Item ($)</label><input style={{ ...IS, border:"1px solid #818cf822" }} type="number" step="0.01" value={li.itemPaid||""} onChange={e=>inp("itemPaid",e.target.value)} placeholder="0.00" /></div>
+          <div style={{ background:"#0a1520", border:"1px solid #818cf822", borderRadius:6, padding:"6px 9px", display:"flex", flexDirection:"column", justifyContent:"center" }}>
+            {(()=>{
+              const total = itemTotalWithTax;
+              const padAmt = parseFloat(li.padrinoAmount)||0;
+              const itemPaidAmt = parseFloat(li.itemPaid)||0;
+              const totalPaidOnItem = padAmt + itemPaidAmt;
+              const balance = total - totalPaidOnItem;
+              return (
+                <>
+                  <div style={{ fontSize:10, color:"#64748b", marginBottom:2 }}>Item Total w/Tax: <span style={{ color:"#c9a96e", fontWeight:700 }}>{fmt(total)}</span></div>
+                  <div style={{ fontSize:10, color:"#64748b", marginBottom:2 }}>Total Paid: <span style={{ color:"#4ade80", fontWeight:700 }}>{fmt(totalPaidOnItem)}</span></div>
+                  <div style={{ fontSize:11, color: balance>0?"#fb7185":"#4ade80", fontWeight:800 }}>Balance: {fmt(Math.max(0,balance))}{balance<=0?" ✓":""}</div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      </div>
 // ─── Payment Row ──────────────────────────────────────────────────────────────
 function PaymentRow({ p, idx, onChange, onRemove, canRemove }) {
   const inp = (k,v) => onChange(idx,k,v);

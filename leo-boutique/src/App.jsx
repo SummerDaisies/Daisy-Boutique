@@ -99,11 +99,20 @@ const orderToDb = (o) => ({
 
 // ─── Math helpers ─────────────────────────────────────────────────────────────
 const fmt            = (n) => `$${(+n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-const totalPaid      = (o) => (o.payments||[]).reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
+const totalPaid      = (o) => {
+  const orderPmts = (o.payments||[]).reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
+  const itemPmts  = (o.lineItems||[]).reduce((s,li)=>
+    s+(parseFloat(li.padrinoAmount)||0)+((li.itemPayments||[]).reduce((ss,p)=>ss+(parseFloat(p.amount)||0),0))
+  ,0);
+  return orderPmts + itemPmts;
+};
 const orderSubtotal  = (o) => (o.lineItems||[]).reduce((s,li)=>s+(parseFloat(li.price)||0)*(parseInt(li.qty)||1),0);
 const orderDiscount  = (o) => { const sub=orderSubtotal(o); const d=parseFloat(o.discount)||0; return o.discountType==="percent"?sub*(d/100):d; };
 const orderAfterDisc = (o) => Math.max(0, orderSubtotal(o)-orderDiscount(o));
-const orderTax       = (o) => orderAfterDisc(o)*TAX_RATE;
+const orderTax       = (o) => (o.lineItems||[]).reduce((s,li)=>{
+  const itemBase=(parseFloat(li.price)||0)*(parseInt(li.qty)||1);
+  return s+(li.taxExempt?0:itemBase*TAX_RATE);
+},0);
 const orderTotal     = (o) => orderAfterDisc(o)+orderTax(o);
 const orderBalance   = (o) => orderTotal(o)-totalPaid(o);
 
@@ -182,13 +191,15 @@ function PinModal({ onSuccess, onClose }) {
 function LineItemRow({ li, idx, onChange, onRemove, canRemove }) {
   const inp = (k,v) => onChange(idx,k,v);
   const IS  = { background:"#070d14", border:"1px solid #c9a96e22", borderRadius:6, color:"#e2d5c0", padding:"6px 9px", fontSize:12, outline:"none", boxSizing:"border-box", width:"100%" };
-  const sc  = li.status ? (STATUSES.find(s=>s.key===li.status)?.color||"#c9a96e") : "#334155";
+const sc  = li.status ? (STATUSES.find(s=>s.key===li.status)?.color||"#c9a96e") : "#334155";
+const borderColor = li.paid && li.pickedUp ? "#fbbf24" : li.paid ? "#818cf8" : sc;
+const bgColor     = li.paid && li.pickedUp ? "#1a1400" : li.paid ? "#0d0a20" : "#0a1520";
   const itemTotal = (parseFloat(li.price)||0)*(parseInt(li.qty)||1);
   const itemTotalWithTax = itemTotal*(1+TAX_RATE);
   const missingStatus = !li.status;
   const missingPrice  = li.price===""||li.price===null||li.price===undefined;
   return (
-    <div style={{ background:"#0a1520", border:`1px solid ${missingStatus?"#fb718544":sc+"22"}`, borderLeft:`3px solid ${missingStatus?"#fb7185":sc}`, borderRadius:10, padding:14, display:"flex", flexDirection:"column", gap:10 }}>
+    <div style={{ background:bgColor, border:`1px solid ${missingStatus?"#fb718544":borderColor+"44"}`, borderLeft:`3px solid ${missingStatus?"#fb7185":borderColor}`, borderRadius:10, padding:14, display:"flex", flexDirection:"column", gap:10 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
         <div style={{ display:"flex", alignItems:"center", gap:10 }}>
           <span style={{ fontSize:11, color:"#c9a96e88", fontWeight:700, textTransform:"uppercase" }}>Item {idx+1}</span>

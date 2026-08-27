@@ -1,1421 +1,1117 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from './lib/supabase';
 
-// ─── EASY CUSTOMIZATION ───────────────────────────────────────────────────────
-const BOUTIQUE_NAME  = "Tienda Guadalupana";
-const TAX_RATE       = 0.0975;
-const MANAGER_PIN    = "3467";
-const STORE_PHONE    = "(901) 372-1703";
-const STORE_ADDRESS  = "4976 Summer Ave Memphis, TN 38122";
-const STORE_WEBSITE  = "";
-const SUPABASE_URL   = "https://kslsecxxhxqomrpwkauv.supabase.co";
-const SUPABASE_KEY   = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzbHNlY3h4aHhxb21ycHdrYXV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwODk2NTgsImV4cCI6MjA4ODY2NTY1OH0.ikf8LbjaYQBcazDJ0m34ZXHMx4py44hHkpUReGJdEYs";
-// ─────────────────────────────────────────────────────────────────────────────
-
-const STATUSES = [
-  { key: "in_stock",    label: "In Stock",         color: "#2dd4bf", bg: "#0d3330" },
-  { key: "to_order",    label: "To Order",          color: "#f59e0b", bg: "#3b2a0a" },
-  { key: "ordered",     label: "Ordered",            color: "#818cf8", bg: "#1e1b4b" },
-  { key: "eta",         label: "ETA Set",            color: "#fb7185", bg: "#3b0a1e" },
-  { key: "arrived",     label: "Arrived",            color: "#4ade80", bg: "#052e16" },
-  { key: "alterations", label: "Needs Alterations",  color: "#f472b6", bg: "#3b0a2a" },
-  { key: "ready",       label: "Ready to Pick Up",   color: "#fbbf24", bg: "#3b2a00" },
-  { key: "on_hold",     label: "On Hold",            color: "#94a3b8", bg: "#1e293b" },
-  { key: "cancelled",   label: "Cancelled",          color: "#f87171", bg: "#2d1515" },
+const FAMILY = ['Daisy', 'Jon', 'Chay', 'Loops', 'Chan', 'Norms'];
+const MANAGERS = ['Daisy', 'Jon']; // Can see all tasks
+const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const ICONS = { dishes:'🍽️', sweep:'🧹', mop:'🫧', trash:'🗑️', vacuum:'🌀', bathroom:'🚿', kitchen:'🍳', laundry:'👕', groceries:'🛒', yard:'🌿', windows:'🪟', pets:'🐾', cooking:'👩‍🍳', other:'✨' };
+const MANAGER_ICONS = { filter:'🌬️', hvac:'❄️', pest:'🐛', smoke:'🔥', water:'💧', appliance:'🔧', roof:'🏠', car:'🚗', seasonal:'🍂', bill:'📄', extinguisher:'🧯', dryer:'🌀', electric:'⚡', plumbing:'🪠', other:'🔩' };
+const MANAGER_INTERVALS = [
+  { value:'monthly', label:'Monthly' },
+  { value:'3months', label:'Every 3 months' },
+  { value:'6months', label:'Every 6 months' },
+  { value:'yearly', label:'Yearly' },
+  { value:'2years', label:'Every 2 years' },
+  { value:'10years', label:'Every 10 years' },
 ];
-const PAYMENT_TYPES = ["Paid in Full", "Layaway", "Deposit", "Pending"];
-const OCCASIONS     = ["Quinceañera", "Damas", "Prom", "Baptism", "Communion", "Wedding", "Party", "Other"];
+const INTERVAL_DAYS = { monthly:30, '3months':90, '6months':180, yearly:365, '2years':730, '10years':3650 };
+const MANAGER_CATEGORIES = ['All','HVAC','Appliances','Plumbing','Safety','Pest','Exterior','Vehicles','Seasonal','Bills & Docs','Electrical'];
+const TODO_PRIORITIES = ['high','normal','low'];
+const PRIORITY_COLORS = { high:'#e05a5a', normal:'#dc9a3c', low:'#5cb87a' };
+const PRIORITY_LABELS = { high:'🔴 High', normal:'🟡 Normal', low:'🟢 Low' };
+const APPT_CATEGORIES = ['appointment','school','medical','work','errand','other'];
+const APPT_COLORS = { appointment:'#dc783c', school:'#6495ed', medical:'#e05a5a', work:'#9370db', errand:'#5cb87a', other:'#dc9a3c' };
+const DEAL_TYPES = ['free','cashback','coupon','low price'];
+const DEAL_TYPE_COLORS = { free:'#5cb87a', cashback:'#6495ed', coupon:'#dc783c', 'low price':'#9370db' };
+const DEAL_TYPE_ICONS = { free:'\uD83C\uDD93', cashback:'\uD83D\uDCB0', coupon:'\u2702\uFE0F', 'low price':'\uD83C\uDFF7\uFE0F' };
+const DEAL_SOURCES = ['Ibotta','Fetch','Rakuten','Walmart','Target','Kroger','HEB','TikTok','Instagram','Facebook Group','Couponing Website','Other'];
+const DEAL_CATEGORIES = ['All','Groceries','Household','Beauty','Health','Baby','Pet','Clothing','Electronics','Food & Dining','Other'];
+const DEAL_CAT_ICONS = { Groceries:'\uD83D\uDED2', Household:'\uD83E\uDDF9', Beauty:'\uD83D\uDC84', Health:'\uD83D\uDC8A', Baby:'\uD83C\uDF7C', Pet:'\uD43E\uDC3E', Clothing:'\uD83D\uDC57', Electronics:'\uD83D\uDCF1', 'Food & Dining':'\uD83C\uDF7D\uFE0F', Other:'\u2728' };
+const todayName = DAYS[new Date().getDay()];
 
-const emptyLineItem = () => ({
-  id: Math.random().toString(36).slice(2),
-  item: "", size: "", color: "", qty: 1,
-  price: "", status: "", eta: "", note: "", brand: "",
-  notePrivate: true, pickedUp: false, paid: false,
-  taxExempt: false,
-  itemPayments: [],
-  padrinoName: "", padrinoAmount: "",
-});
-const emptyPayment = () => ({
-  id: Math.random().toString(36).slice(2),
-  amount: "", date: new Date().toISOString().split("T")[0], note: "",
-});
 
-// ─── Supabase helpers ─────────────────────────────────────────────────────────
-const sbFetch = (path, opts={}) => fetch(`${SUPABASE_URL}/rest/v1${path}`, {
-  ...opts,
-  headers: {
-    "apikey": SUPABASE_KEY,
-    "Authorization": `Bearer ${SUPABASE_KEY}`,
-    "Content-Type": "application/json",
-    "Prefer": opts.prefer || "return=representation",
-    ...opts.headers,
-  },
-});
-
-const dbToOrder = (r) => ({
-  id:            r.id,
-  customer:      r.customer || "",
-  customer2:     r.customer2 || "",
-  phone:         r.phone || "",
-  date:          r.date || "",
-  occasion:      r.occasion || "",
-  poNumber:      r.po_number || "",
-  schoolName:    r.school_name || "",
-  referredBy:    r.referred_by || "",
-  modelNumber:   r.model_number || "",
-  colorPref:     r.color_pref || "",
-  eventDate:     r.event_date || "",
-  photoDate:     r.photo_date || "",
-  paymentType:   r.payment_type || "Pending",
-  discount:      parseFloat(r.discount) || 0,
-  discountType:  r.discount_type || "amount",
-  pickupDate:    r.pickup_date || "",
-  depositDueDate:r.deposit_due_date || "",
-  pickedUp:      r.picked_up || false,
-  taxExempt:     r.tax_exempt || false,
-  archived:      r.archived || false,
-  payments:      r.payments || [],
-  lineItems:     r.line_items || [],
-});
-
-const orderToDb = (o) => ({
-  customer:        o.customer,
-  customer2:       o.customer2 || "",
-  phone:           o.phone || "",
-  date:            o.date || "",
-  occasion:        o.occasion || "",
-  po_number:       o.poNumber || "",
-  school_name:     o.schoolName || "",
-  referred_by:     o.referredBy || "",
-  model_number:    o.modelNumber || "",
-  color_pref:      o.colorPref || "",
-  event_date:      o.eventDate || "",
-  photo_date:      o.photoDate || "",
-  payment_type:    o.paymentType || "Pending",
-  discount:        parseFloat(o.discount) || 0,
-  discount_type:   o.discountType || "amount",
-  pickup_date:     o.pickupDate || "",
-  deposit_due_date:o.depositDueDate || "",
-  picked_up:       o.pickedUp || false,
-  tax_exempt:      o.taxExempt || false,
-  archived:        o.archived || false,
-  payments:        o.payments || [],
-  line_items:      o.lineItems || [],
-});
-
-// ─── Math helpers ─────────────────────────────────────────────────────────────
-const fmt            = (n) => `$${(+n||0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-const itemTaxRate    = (li) => (li&&li.taxExempt) ? 0 : TAX_RATE;
-const itemBase       = (li) => (parseFloat(li?.price)||0)*(parseInt(li?.qty)||1);
-const itemTotal      = (li) => itemBase(li)*(1+itemTaxRate(li));
-const itemPaidAmt    = (li) => (parseFloat(li?.padrinoAmount)||0)+((li?.itemPayments||[]).reduce((s,p)=>s+(parseFloat(p?.amount)||0),0));
-const itemBalance    = (li) => itemTotal(li)-itemPaidAmt(li);
-const totalPaid      = (o) => {
-  const orderPmts = (o?.payments||[]).reduce((s,p)=>s+(parseFloat(p?.amount)||0),0);
-  const allItemPmts = (o?.lineItems||[]).reduce((s,li)=>s+itemPaidAmt(li),0);
-  return orderPmts+allItemPmts;
-};
-const orderSubtotal  = (o) => (o?.lineItems||[]).reduce((s,li)=>s+itemBase(li),0);
-const orderDiscount  = (o) => { const sub=orderSubtotal(o); const d=parseFloat(o?.discount)||0; return o?.discountType==="percent"?sub*(d/100):d; };
-const orderAfterDisc = (o) => Math.max(0, orderSubtotal(o)-orderDiscount(o));
-const orderTax       = (o) => o?.taxExempt ? 0 : (o?.lineItems||[]).reduce((s,li)=>s+(li?.taxExempt?0:itemBase(li)*TAX_RATE),0);
-const orderTotal     = (o) => orderAfterDisc(o)+orderTax(o);
-const orderBalance   = (o) => orderTotal(o)-totalPaid(o);
-
-// ─── UI atoms ─────────────────────────────────────────────────────────────────
-const LS  = { color:"#64748b", fontSize:10, fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:3, display:"block" };
-const AB  = (c) => ({ background:c+"18", border:`1px solid ${c}33`, color:c, borderRadius:6, padding:"4px 10px", fontSize:11, fontWeight:700, cursor:"pointer" });
-const ABL = (c) => ({ background:c+"22", border:`1px solid ${c}44`, color:c, borderRadius:8, padding:"8px 20px", cursor:"pointer", fontSize:13, fontWeight:700 });
-
-function StatusBadge({ statusKey }) {
-  const s = STATUSES.find(x=>x.key===statusKey)||STATUSES[0];
-  return <span style={{ background:s.bg, color:s.color, border:`1px solid ${s.color}44`, borderRadius:20, padding:"2px 10px", fontSize:10, fontWeight:700, letterSpacing:"0.06em", textTransform:"uppercase", whiteSpace:"nowrap" }}>{s.label}</span>;
+// ─── FlyLady System ───────────────────────────────────────────────────────────
+const DEFAULT_ZONES = [
+  { id:1, name:'Zone 1 — Entry, Front Porch & Dining Room', icon:'🚪', color:'#dc783c',
+    tasks:['Declutter entryway','Wipe front door & handle','Sweep porch','Clean light fixtures','Wipe dining table & chairs','Polish furniture','Vacuum/mop dining floor','Clean mirrors & windows in zone'] },
+  { id:2, name:'Zone 2 — Kitchen', icon:'🍳', color:'#6495ed',
+    tasks:['Clean inside microwave','Wipe down all appliances','Clean stovetop & oven','Scrub sink','Wipe cabinet fronts','Clean out fridge','Mop kitchen floor','Declutter countertops','Wipe backsplash'] },
+  { id:3, name:'Zone 3 — Main Bathroom & Extra Rooms', icon:'🚿', color:'#9370db',
+    tasks:['Scrub toilet inside & out','Clean sink & countertop','Scrub shower/tub','Wipe mirrors','Mop bathroom floor','Wash bath mats','Declutter extra rooms','Dust surfaces in extra rooms'] },
+  { id:4, name:'Zone 4 — Master Bedroom', icon:'🛏️', color:'#5cb87a',
+    tasks:['Declutter nightstands','Dust all surfaces','Vacuum under bed','Clean mirrors','Wash bedding','Wipe light switches','Organize closet','Vacuum/mop floor'] },
+  { id:5, name:'Zone 5 — Living Room', icon:'🛋️', color:'#e05a5a',
+    tasks:['Dust all surfaces','Vacuum sofa & cushions','Clean remote controls','Wipe baseboards','Clean windows','Declutter shelves','Vacuum/mop floor','Fluff pillows & blankets'] },
+];
+const MORNING_ROUTINE = [
+  'Get fully dressed to shoes 👟',
+  'Make your bed 🛏️',
+  'Drink a full glass of water 💧',
+  'Swish & swipe the bathroom (2 min) 🚿',
+  'Start a load of laundry if it's your day 👕',
+  'Empty the dishwasher or do dishes',
+  'Check your calendar for today 📅',
+  'Write down your #1 priority for today',
+];
+const EVENING_ROUTINE = [
+  'Shine your sink ✨',
+  'Lay out clothes for tomorrow 👗',
+  'Check the calendar for tomorrow 📅',
+  'Do a 15-min declutter walk through the house',
+  'Run/empty dishwasher',
+  'Pick up living room before bed',
+  'Wash your face & do your bedtime routine',
+  'Go to bed at a decent hour 😴',
+];
+const WEEKLY_BLESSING = [
+  { task:'Vacuum all rooms', time:'~15 min', icon:'🌀' },
+  { task:'Mop floors', time:'~15 min', icon:'🫧' },
+  { task:'Wipe mirrors & windows', time:'~10 min', icon:'🪟' },
+  { task:'Change bedsheets', time:'~15 min', icon:'🛏️' },
+  { task:'Take out all trash', time:'~5 min', icon:'🗑️' },
+  { task:'Wipe doorknobs & light switches', time:'~5 min', icon:'🤲' },
+  { task:'Declutter hotspots', time:'~10 min', icon:'📦' },
+];
+const BABY_STEPS = [
+  { day:1, task:'Shine your sink every night before bed', why:'It's the anchor habit that starts everything.' },
+  { day:2, task:'Get dressed to lace-up shoes every morning', why:'It signals your brain you're ready to work.' },
+  { day:3, task:'Read FlyLady reminders & post them visible', why:'Keep the system in front of you.' },
+  { day:4, task:'Write sticky notes of your routines', why:'Don't rely on memory.' },
+  { day:5, task:'Add a 15-minute declutter session daily', why:'Small bursts beat marathon cleaning.' },
+  { day:6, task:'Set a timer for every task', why:'You can do anything for 15 minutes!' },
+  { day:7, task:'Celebrate what you DID do — not what you didn't', why:'Progress over perfection always.' },
+];
+// Which zone to focus on based on day of month
+function getCurrentZone(zones) {
+  const day = new Date().getDate();
+  if (day <= 7) return zones[0];
+  if (day <= 14) return zones[1];
+  if (day <= 21) return zones[2];
+  if (day <= 27) return zones[3];
+  return zones[4];
 }
-function PayBadge({ type }) {
-  const c = {"Paid in Full":"#4ade80",Layaway:"#f59e0b",Deposit:"#818cf8",Pending:"#94a3b8"}[type]||"#94a3b8";
-  return <span style={{ color:c, background:c+"18", border:`1px solid ${c}33`, borderRadius:20, padding:"2px 10px", fontSize:10, fontWeight:700 }}>{type}</span>;
+function getWeeklyBlessingDay() {
+  // FlyLady does Weekly Home Blessing on Mondays
+  return 'Monday';
 }
-function OccasionBadge({ occasion }) {
-  const colors = { Quinceañera:"#f472b6", Prom:"#818cf8", Baptism:"#2dd4bf", Communion:"#fbbf24", Wedding:"#f5e3b8", Party:"#fb7185", Other:"#94a3b8" };
-  const c = colors[occasion]||"#94a3b8";
-  return occasion ? <span style={{ color:c, background:c+"18", border:`1px solid ${c}33`, borderRadius:20, padding:"2px 10px", fontSize:10, fontWeight:700 }}>{occasion}</span> : null;
+function daysSince(d) { if (!d) return null; return Math.floor((new Date() - new Date(d)) / (1000*60*60*24)); }
+function getStatus(item) {
+  const limit = INTERVAL_DAYS[item.interval_type] || 90;
+  const since = daysSince(item.last_done);
+  if (since === null) return 'never';
+  if (since >= limit) return 'overdue';
+  if (since >= limit * 0.8) return 'soon';
+  return 'ok';
 }
-function Modal({ title, onClose, wide, children }) {
-  return (
-    <div style={{ position:"fixed", inset:0, background:"#000000cc", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000, padding:16 }} onClick={onClose}>
-      <div style={{ background:"#0f1923", border:"1px solid #c9a96e33", borderRadius:16, padding:28, maxWidth:wide?860:520, width:"100%", maxHeight:"92vh", overflowY:"auto", boxShadow:"0 24px 64px #000000aa" }} onClick={e=>e.stopPropagation()}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-          <h2 style={{ color:"#c9a96e", fontSize:18, fontFamily:"'Playfair Display',serif", margin:0 }}>{title}</h2>
-          <button onClick={onClose} style={{ background:"none", border:"none", color:"#94a3b8", fontSize:22, cursor:"pointer" }}>×</button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
+function statusColor(s) { if (s==='never'||s==='overdue') return '#e05a5a'; if (s==='soon') return '#dc9a3c'; return '#5cb87a'; }
+function statusLabel(item) {
+  const since = daysSince(item.last_done);
+  const limit = INTERVAL_DAYS[item.interval_type] || 90;
+  if (since === null) return 'Never done';
+  const due = limit - since;
+  return due <= 0 ? 'Overdue by ' + Math.abs(due) + 'd' : 'Due in ' + due + 'd';
 }
-function DR({ label, val, hi }) {
-  return (
-    <div>
-      <div style={{ fontSize:10, color:"#64748b", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:2 }}>{label}</div>
-      <div style={{ fontSize:14, color:hi?"#c9a96e":"#e2d5c0", fontWeight:hi?700:400 }}>{val||"—"}</div>
-    </div>
-  );
-}
+function isDueToday(c) { if (c.repeat_type==='daily') return true; if (c.repeat_type==='weekly') return (c.days||[]).includes(todayName); return false; }
+function getRepeatLabel(c) { if (c.repeat_type==='daily') return 'Every day'; if (c.repeat_type==='weekly'&&c.days?.length>0) return c.days.join(', '); if (c.repeat_type==='monthly') return 'Monthly'; return c.repeat_type; }
+function apptDateStr(d) { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function todayStr() { return apptDateStr(new Date()); }
+function formatTime(t) { if (!t) return ''; const [h,m]=t.split(':'); const hr=parseInt(h); return (hr>12?hr-12:hr||12)+':'+m+' '+(hr>=12?'PM':'AM'); }
+function formatDate(ds) { const [y,mo,d]=ds.split('-'); return new Date(y,mo-1,d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); }
 
-// ─── PIN Modal ────────────────────────────────────────────────────────────────
-function PinModal({ onSuccess, onClose }) {
-  const [pin, setPin] = useState("");
-  const [err, setErr] = useState(false);
-  const enter = (d) => {
-    const next = pin+d;
-    if (next.length < 4) { setPin(next); setErr(false); return; }
-    if (next === MANAGER_PIN) { onSuccess(); }
-    else { setErr(true); setPin(""); }
-  };
-  const BS = { display:"flex", alignItems:"center", justifyContent:"center", width:60, height:60, borderRadius:"50%", fontSize:22, fontWeight:700, cursor:"pointer", background:"#0a1520", border:"1px solid #c9a96e22", color:"#e2d5c0" };
-  return (
-    <div style={{ position:"fixed", inset:0, background:"#000000dd", display:"flex", alignItems:"center", justifyContent:"center", zIndex:2000 }} onClick={onClose}>
-      <div style={{ background:"#0f1923", border:"1px solid #c9a96e33", borderRadius:20, padding:32, width:280, textAlign:"center" }} onClick={e=>e.stopPropagation()}>
-        <div style={{ fontFamily:"'Playfair Display',serif", color:"#c9a96e", fontSize:18, marginBottom:6 }}>Manager Access</div>
-        <div style={{ color:"#64748b", fontSize:12, marginBottom:20 }}>Enter your PIN to view financials</div>
-        <div style={{ display:"flex", justifyContent:"center", gap:10, marginBottom:20 }}>
-          {[0,1,2,3].map(i=><div key={i} style={{ width:14, height:14, borderRadius:"50%", background:pin.length>i?"#c9a96e":"#1e2d3d", border:"1px solid #c9a96e44" }} />)}
-        </div>
-        {err && <div style={{ color:"#fb7185", fontSize:12, marginBottom:12 }}>Incorrect PIN. Try again.</div>}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, justifyItems:"center" }}>
-          {[1,2,3,4,5,6,7,8,9].map(d=><button key={d} onClick={()=>enter(String(d))} style={BS}>{d}</button>)}
-          <div /><button onClick={()=>enter("0")} style={BS}>0</button>
-          <button onClick={()=>setPin(p=>p.slice(0,-1))} style={{ ...BS, fontSize:16 }}>⌫</button>
-        </div>
-        <button onClick={onClose} style={{ marginTop:20, background:"none", border:"none", color:"#64748b", fontSize:12, cursor:"pointer" }}>Cancel</button>
-      </div>
-    </div>
-  );
-}
+export default function App() {
+  const [chores, setChores] = useState([]);
+  const [laundry, setLaundry] = useState([]);
+  const [managerItems, setManagerItems] = useState([]);
+  const [todos, setTodos] = useState([]);
+  const [appointments, setAppointments] = useState([]);
+  const [deals, setDeals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('today');
+  const [activeUser, setActiveUser] = useState('Daisy');
+  const [showModal, setShowModal] = useState(false);
+  const [editingChore, setEditingChore] = useState(null);
+  const [editingLaundry, setEditingLaundry] = useState(null);
+  const [editingManager, setEditingManager] = useState(null);
+  const [editingTodo, setEditingTodo] = useState(null);
+  const [editingAppt, setEditingAppt] = useState(null);
+  const [editingDeal, setEditingDeal] = useState(null);
+  const [flySection, setFlySection] = useState('today'); // today | zones | routines | blessing | babysteps
+  const [zones, setZones] = useState(DEFAULT_ZONES);
+  const [flyTasksDone, setFlyTasksDone] = useState({});
+  const [routineDone, setRoutineDone] = useState({morning:{}, evening:{}});
+  const [blessingDone, setBlessingDone] = useState({});
+  const [editingZone, setEditingZone] = useState(null);
+  const [zoneForm, setZoneForm] = useState({name:'', icon:'🏠', color:'#dc783c', tasks:[]});
+  const [newTask, setNewTask] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [managerCat, setManagerCat] = useState('All');
+  const [managerSort, setManagerSort] = useState('status');
+  const [todoFilter, setTodoFilter] = useState('open');
+  const [calDate, setCalDate] = useState(new Date());
+  const [dealGroup, setDealGroup] = useState('type');
+  const [dealCatFilter, setDealCatFilter] = useState('All');
+  const [dealView, setDealView] = useState('approved');
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [choreForm, setChoreForm] = useState({ title:'', icon:'other', assigned_to:'Everyone', repeat_type:'daily', days:[] });
+  const [laundryForm, setLaundryForm] = useState({ person:'', day:'Monday' });
+  const [managerForm, setManagerForm] = useState({ title:'', icon:'filter', interval_type:'3months', notes:'', category:'HVAC' });
+  const [todoForm, setTodoForm] = useState({ title:'', notes:'', priority:'normal', assigned_to:'Anyone' });
+  const [apptForm, setApptForm] = useState({ title:'', date:'', time:'', notes:'', person:'Anyone', category:'appointment' });
+  const [dealForm, setDealForm] = useState({ title:'', store:'', deal_type:'free', category:'Groceries', source:'Ibotta', value:'', expires:'', notes:'', submitted_by:'' });
 
-// ─── Line Item Row ────────────────────────────────────────────────────────────
-function LineItemRow({ li, idx, onChange, onRemove, canRemove }) {
-  const inp = (k,v) => onChange(idx,k,v);
-  const IS  = { background:"#070d14", border:"1px solid #c9a96e22", borderRadius:6, color:"#e2d5c0", padding:"6px 9px", fontSize:12, outline:"none", boxSizing:"border-box", width:"100%" };
-  const sc           = li.status ? (STATUSES.find(s=>s.key===li.status)?.color||"#c9a96e") : "#334155";
-  const borderColor  = li.paid && li.pickedUp ? "#fbbf24" : li.paid ? "#818cf8" : sc;
-  const bgColor      = li.paid && li.pickedUp ? "#1a1400" : li.paid ? "#0d0a20" : "#0a1520";
-  const liBase       = itemBase(li);
-  const liTotal      = itemTotal(li);
-  const liPaid       = itemPaidAmt(li);
-  const liBalance    = itemBalance(li);
-  const missingStatus = !li.status;
-  const missingPrice  = li.price===""||li.price===null||li.price===undefined;
-  return (
-    <div style={{ background:bgColor, border:`1px solid ${missingStatus?"#fb718544":borderColor+"44"}`, borderLeft:`3px solid ${missingStatus?"#fb7185":borderColor}`, borderRadius:10, padding:14, display:"flex", flexDirection:"column", gap:10 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-          <span style={{ fontSize:11, color:"#c9a96e88", fontWeight:700, textTransform:"uppercase" }}>Item {idx+1}</span>
-          {liBase>0 && (
-            <span style={{ fontSize:11, color:"#c9a96e", background:"#c9a96e18", border:"1px solid #c9a96e33", borderRadius:20, padding:"2px 10px", fontWeight:700 }}>
-              {fmt(liBase)}{li.taxExempt?" (tax exempt)":`+ tax = ${fmt(liTotal)}`}
-            </span>
-          )}
-          {liPaid>0 && <span style={{ fontSize:11, color:"#4ade80", background:"#4ade8018", border:"1px solid #4ade8033", borderRadius:20, padding:"2px 10px", fontWeight:700 }}>Paid: {fmt(liPaid)}</span>}
-          {liBase>0 && <span style={{ fontSize:11, color:liBalance>0?"#fb7185":"#4ade80", background:liBalance>0?"#fb718518":"#4ade8018", border:`1px solid ${liBalance>0?"#fb718533":"#4ade8033"}`, borderRadius:20, padding:"2px 10px", fontWeight:700 }}>{liBalance>0?`Owes: ${fmt(liBalance)}`:"✓ Paid"}</span>}
-        </div>
-        {canRemove && <button onClick={()=>onRemove(idx)} style={{ background:"#fb718518", border:"1px solid #fb718533", color:"#fb7185", borderRadius:6, padding:"2px 8px", fontSize:12, cursor:"pointer" }}>Remove</button>}
-      </div>
-      <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", gap:8 }}>
-        <div><label style={LS}>Item Description</label><input style={IS} value={li.item} onChange={e=>inp("item",e.target.value)} placeholder="e.g. Vestido Quinceañera" /></div>
-        <div><label style={LS}>Size / Talla</label><input style={IS} value={li.size} onChange={e=>inp("size",e.target.value)} placeholder="M" /></div>
-        <div><label style={LS}>Color</label><input style={IS} value={li.color} onChange={e=>inp("color",e.target.value)} placeholder="Rosa" /></div>
-      </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1.5fr 1.5fr", gap:8 }}>
-        <div><label style={LS}>Qty</label><input style={IS} type="number" min={1} value={li.qty} onChange={e=>inp("qty",e.target.value)} /></div>
-        <div>
-          <label style={LS}>Price ($) <span style={{ color:"#fb7185" }}>*</span></label>
-          <input style={{ ...IS, border:`1px solid ${missingPrice?"#fb718566":"#c9a96e22"}` }} type="number" step="0.01" min="0"
-            value={li.price} onChange={e=>inp("price",e.target.value)} placeholder="required" />
-        </div>
-        <div><label style={LS}>Brand (private)</label><input style={{ ...IS, border:"1px solid #64748b22" }} value={li.brand||""} onChange={e=>inp("brand",e.target.value)} placeholder="e.g. Morilee" /></div>
-        <div>
-          <label style={{ ...LS, color: missingStatus?"#fb7185":"#64748b" }}>Status <span style={{ color:"#fb7185" }}>*</span></label>
-          <select style={{ ...IS, border:`1px solid ${missingStatus?"#fb718566":"#c9a96e22"}` }} value={li.status||""} onChange={e=>inp("status",e.target.value)}>
-            <option value="">— Required —</option>
-            {STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
-          </select>
-        </div>
-        <div><label style={LS}>ETA Date</label><input style={IS} type="date" value={li.eta} onChange={e=>inp("eta",e.target.value)} /></div>
-      </div>
-      <div>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:3 }}>
-          <label style={LS}>Note</label>
-          <label style={{ display:"flex", alignItems:"center", gap:5, cursor:"pointer", fontSize:10, color: li.notePrivate!==false?"#fb7185":"#4ade80" }}>
-            <input type="checkbox" checked={li.notePrivate!==false} onChange={e=>inp("notePrivate",e.target.checked)}
-              style={{ width:12, height:12, accentColor:"#fb7185" }} />
-            {li.notePrivate!==false?"🔒 Private (not printed)":"🌐 Public (printed on receipt)"}
-          </label>
-        </div>
-        <textarea style={{ ...IS, resize:"vertical", minHeight:44 }} value={li.note} onChange={e=>inp("note",e.target.value)} placeholder="Notes…" />
-      </div>
-      <div style={{ display:"flex", gap:16 }}>
-        <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:12, color:li.pickedUp?"#4ade80":"#64748b" }}>
-          <input type="checkbox" checked={li.pickedUp||false} onChange={e=>inp("pickedUp",e.target.checked)} style={{ width:16, height:16, accentColor:"#4ade80" }} />
-          Item picked up
-        </label>
-        <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:12, color:li.paid?"#818cf8":"#64748b" }}>
-          <input type="checkbox" checked={li.paid||false} onChange={e=>inp("paid",e.target.checked)} style={{ width:16, height:16, accentColor:"#818cf8" }} />
-          Paid
-        </label>
-      </div>
-      {/* Padrino / Retainer */}
-      <div style={{ background:"#070d14", border:"1px solid #f472b622", borderRadius:8, padding:10 }}>
-        <div style={{ fontSize:10, color:"#f472b6", fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>Padrino / Retainer (optional)</div>
-        <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr", gap:8 }}>
-          <div><label style={LS}>Padrino Name</label><input style={{ ...IS, border:"1px solid #f472b622" }} value={li.padrinoName||""} onChange={e=>inp("padrinoName",e.target.value)} placeholder="Name of sponsor" /></div>
-          <div><label style={LS}>Amount Paid ($)</label><input style={{ ...IS, border:"1px solid #f472b622" }} type="number" step="0.01" value={li.padrinoAmount||""} onChange={e=>inp("padrinoAmount",e.target.value)} placeholder="0.00" /></div>
-        </div>
-      </div>
-      {/* Tax exempt */}
-      <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:12, color:li.taxExempt?"#fbbf24":"#64748b" }}>
-        <input type="checkbox" checked={li.taxExempt||false} onChange={e=>inp("taxExempt",e.target.checked)} style={{ width:16, height:16, accentColor:"#fbbf24" }} />
-        Tax Exempt
-      </label>
-      {/* Item payments & balance */}
-      <div style={{ background:"#070d14", border:"1px solid #818cf822", borderRadius:8, padding:10 }}>
-        <div style={{ fontSize:10, color:"#818cf8", fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:8 }}>Item Payments / Balance</div>
-        {(li.itemPayments||[]).map((ip,pi)=>(
-          <div key={pi} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 2fr auto", gap:6, marginBottom:6, alignItems:"end" }}>
-            <div><label style={LS}>Amount ($)</label>
-              <input style={{ ...IS, border:"1px solid #818cf833" }} type="number" step="0.01" value={ip.amount||""} placeholder="0.00"
-                onChange={e=>{ const ps=[...(li.itemPayments||[])]; ps[pi]={...ps[pi],amount:e.target.value}; inp("itemPayments",ps); }} /></div>
-            <div><label style={LS}>Date</label>
-              <input style={{ ...IS, border:"1px solid #818cf833" }} type="date" value={ip.date||""}
-                onChange={e=>{ const ps=[...(li.itemPayments||[])]; ps[pi]={...ps[pi],date:e.target.value}; inp("itemPayments",ps); }} /></div>
-            <div><label style={LS}>Note</label>
-              <input style={{ ...IS, border:"1px solid #818cf833" }} value={ip.note||""} placeholder="cash, Zelle…"
-                onChange={e=>{ const ps=[...(li.itemPayments||[])]; ps[pi]={...ps[pi],note:e.target.value}; inp("itemPayments",ps); }} /></div>
-            <button onClick={()=>{ const ps=(li.itemPayments||[]).filter((_,i)=>i!==pi); inp("itemPayments",ps); }}
-              style={{ background:"#fb718518", border:"1px solid #fb718533", color:"#fb7185", borderRadius:6, padding:"6px 8px", fontSize:12, cursor:"pointer" }}>✕</button>
-          </div>
-        ))}
-        <button onClick={()=>inp("itemPayments",[...(li.itemPayments||[]),{amount:"",date:new Date().toISOString().split("T")[0],note:""}])}
-          style={{ background:"none", border:"1px dashed #818cf855", color:"#818cf8", borderRadius:6, padding:"5px 12px", fontSize:11, fontWeight:700, cursor:"pointer", width:"100%", marginBottom:8 }}>
-          + Add Payment on This Item
-        </button>
-        {/* Balance summary */}
-        <div style={{ background:"#0a1520", border:"1px solid #818cf822", borderRadius:6, padding:"8px 10px", display:"flex", flexDirection:"column", gap:3 }}>
-          <div style={{ fontSize:10, color:"#64748b" }}>Item Total{li.taxExempt?" (tax exempt)":` w/${(TAX_RATE*100).toFixed(2)}% tax`}: <span style={{ color:"#c9a96e", fontWeight:700 }}>{fmt(liTotal)}</span></div>
-          <div style={{ fontSize:10, color:"#64748b" }}>Total Paid ({(li.itemPayments||[]).length} payment{(li.itemPayments||[]).length!==1?"s":""}){parseFloat(li.padrinoAmount)>0?` + ${fmt(parseFloat(li.padrinoAmount))} padrino`:""}: <span style={{ color:"#4ade80", fontWeight:700 }}>{fmt(liPaid)}</span></div>
-          <div style={{ fontSize:12, fontWeight:800, color:liBalance>0?"#fb7185":"#4ade80" }}>Balance: {fmt(Math.max(0,liBalance))}{liBalance<=0?" ✓":""}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    const [{ data:c },{ data:l },{ data:m },{ data:t },{ data:a }] = await Promise.all([
+      supabase.from('chores').select('*').order('id'),
+      supabase.from('laundry_schedule').select('*').order('id'),
+      supabase.from('manager_items').select('*').order('id'),
+      supabase.from('todos').select('*').order('created_at',{ascending:false}),
+      supabase.from('appointments').select('*').order('date').order('time'),
+      supabase.from('deals').select('*').order('created_at',{ascending:false}),
+    ]);
+    if (c) setChores(c); if (l) setLaundry(l); if (m) setManagerItems(m); if (t) setTodos(t); if (a) setAppointments(a);
+    const {data:dl} = await supabase.from('deals').select('*').order('created_at',{ascending:false}); if (dl) setDeals(dl);
+    setLoading(false);
+  }, []);
 
-// ─── Payment Row ──────────────────────────────────────────────────────────────
-function PaymentRow({ p, idx, onChange, onRemove, canRemove }) {
-  const inp = (k,v) => onChange(idx,k,v);
-  const IS  = { background:"#070d14", border:"1px solid #4ade8022", borderRadius:6, color:"#e2d5c0", padding:"6px 9px", fontSize:12, outline:"none", boxSizing:"border-box", width:"100%" };
-  return (
-    <div style={{ background:"#0a1520", border:"1px solid #4ade8022", borderLeft:"3px solid #4ade80", borderRadius:10, padding:12, display:"grid", gridTemplateColumns:"1fr 1fr 2fr auto", gap:8, alignItems:"end" }}>
-      <div><label style={LS}>Amount ($)</label><input style={IS} type="number" step="0.01" value={p.amount} onChange={e=>inp("amount",e.target.value)} placeholder="0.00" /></div>
-      <div><label style={LS}>Date</label><input style={IS} type="date" value={p.date} onChange={e=>inp("date",e.target.value)} /></div>
-      <div><label style={LS}>Note (optional)</label><input style={IS} value={p.note} onChange={e=>inp("note",e.target.value)} placeholder="cash, Zelle, 2nd abono…" /></div>
-      {canRemove && <button onClick={()=>onRemove(idx)} style={{ background:"#fb718518", border:"1px solid #fb718533", color:"#fb7185", borderRadius:6, padding:"6px 10px", fontSize:12, cursor:"pointer" }}>✕</button>}
-    </div>
-  );
-}
-
-// ─── Order Form ───────────────────────────────────────────────────────────────
-function OrderForm({ initial, onSave, onCancel }) {
-  const [customer,      setCustomer]   = useState(initial?.customer||"");
-  const [customer2,     setCustomer2]  = useState(initial?.customer2||"");
-  const [phone,         setPhone]      = useState(initial?.phone||"");
-  const [date,          setDate]       = useState(initial?.date||new Date().toISOString().split("T")[0]);
-  const [occasion,      setOccasion]   = useState(initial?.occasion||"");
-  const [poNumber,      setPoNumber]   = useState(initial?.poNumber||"");
-  const [schoolName,    setSchoolName] = useState(initial?.schoolName||"");
-  const [referredBy,    setReferredBy] = useState(initial?.referredBy||"");
-  const [modelNumber,   setModelNumber]= useState(initial?.modelNumber||"");
-  const [colorPref,     setColorPref]  = useState(initial?.colorPref||"");
-  const [paymentType,   setPayType]    = useState(initial?.paymentType||"Pending");
-  const [discount,      setDiscount]   = useState(initial?.discount??0);
-  const [discountType,  setDiscType]   = useState(initial?.discountType||"amount");
-  const [pickupDate,    setPickupDate] = useState(initial?.pickupDate||"");
-  const [depositDueDate,setDepDue]     = useState(initial?.depositDueDate||"");
-  const [eventDate,     setEventDate]  = useState(initial?.eventDate||"");
-  const [photoDate,     setPhotoDate]  = useState(initial?.photoDate||"");
-  const [pickedUp,      setPickedUp]   = useState(initial?.pickedUp||false);
-  const [taxExempt,     setTaxExempt]  = useState(initial?.taxExempt||false);
-  const [lineItems,     setLineItems]  = useState(initial?.lineItems?.length?initial.lineItems.map(li=>({...li})):[emptyLineItem()]);
-  const [payments,      setPayments]   = useState(initial?.payments?.length?initial.payments.map(p=>({...p})):[emptyPayment()]);
-
-  const updateLI  = (idx,k,v) => setLineItems(p=>p.map((li,i)=>i===idx?{...li,[k]:v}:li));
-  const addLI     = () => setLineItems(p=>[...p,emptyLineItem()]);
-  const removeLI  = (idx) => setLineItems(p=>p.filter((_,i)=>i!==idx));
-  const updatePay = (idx,k,v) => setPayments(p=>p.map((x,i)=>i===idx?{...x,[k]:v}:x));
-  const addPay    = () => setPayments(p=>[...p,emptyPayment()]);
-  const removePay = (idx) => setPayments(p=>p.filter((_,i)=>i!==idx));
-
-  const subtotal  = lineItems.reduce((s,li)=>s+itemBase(li),0);
-  const discAmt   = discountType==="percent"?subtotal*(parseFloat(discount)||0)/100:Math.min(parseFloat(discount)||0,subtotal);
-  const afterDisc = Math.max(0,subtotal-discAmt);
-  const tax       = taxExempt ? 0 : lineItems.reduce((s,li)=>s+(li.taxExempt?0:itemBase(li)*TAX_RATE),0);
-  const total     = afterDisc+tax;
-  const allItemPmts = lineItems.reduce((s,li)=>s+itemPaidAmt(li),0);
-  const paidSoFar = payments.reduce((s,p)=>s+(parseFloat(p.amount)||0),0) + allItemPmts;
-  const balance   = total-paidSoFar;
-
-  const formErrors = () => {
-    const errs = [];
-    if(!customer.trim()) errs.push("Customer name is required");
-    lineItems.forEach((li,i)=>{
-      if(!li.status) errs.push(`Item ${i+1}: Status is required`);
-      if(li.price===""||li.price===null||li.price===undefined) errs.push(`Item ${i+1}: Price is required (enter 0 if free)`);
-    });
-    return errs;
-  };
-
-  const IS = { background:"#070d14", border:"1px solid #c9a96e22", borderRadius:8, color:"#e2d5c0", padding:"8px 12px", fontSize:13, outline:"none", boxSizing:"border-box", width:"100%" };
-
-  return (
-    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-      <div style={{ background:"#0a1520", border:"1px solid #c9a96e18", borderRadius:10, padding:14 }}>
-        <div style={{ fontSize:11, color:"#c9a96e", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>Customer Info</div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
-          <div><label style={LS}>Primary Name</label><input style={IS} value={customer} onChange={e=>setCustomer(e.target.value)} placeholder="Full name" /></div>
-          <div><label style={LS}>2nd Name (optional)</label><input style={IS} value={customer2} onChange={e=>setCustomer2(e.target.value)} placeholder="Parent / other name" /></div>
-          <div><label style={LS}>Phone</label><input style={IS} value={phone} onChange={e=>setPhone(e.target.value)} placeholder="555-0000" /></div>
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginTop:10 }}>
-          <div><label style={LS}>Order Date</label><input style={IS} type="date" value={date} onChange={e=>setDate(e.target.value)} /></div>
-          <div><label style={LS}>Pickup Date</label><input style={IS} type="date" value={pickupDate} onChange={e=>setPickupDate(e.target.value)} /></div>
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginTop:10 }}>
-          <div><label style={LS}>Event Date 🎉</label><input style={IS} type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} placeholder="Party / event date" /></div>
-          <div><label style={LS}>Photo / Shoot Date 📸</label><input style={IS} type="date" value={photoDate} onChange={e=>setPhotoDate(e.target.value)} placeholder="Photo session date" /></div>
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:10, marginTop:10 }}>
-          <div><label style={LS}>Occasion</label>
-            <select style={IS} value={occasion} onChange={e=>setOccasion(e.target.value)}>
-              <option value="">— Select —</option>
-              {OCCASIONS.map(o=><option key={o}>{o}</option>)}
-            </select></div>
-          <div><label style={LS}>PO # (optional)</label><input style={IS} value={poNumber} onChange={e=>setPoNumber(e.target.value)} placeholder="PO-2024-001" /></div>
-          <div><label style={LS}>School Name</label><input style={IS} value={schoolName} onChange={e=>setSchoolName(e.target.value)} placeholder="School name" /></div>
-          <div><label style={LS}>Referred By</label><input style={IS} value={referredBy} onChange={e=>setReferredBy(e.target.value)} placeholder="Who sent them?" /></div>
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginTop:10 }}>
-          <div><label style={LS}>Model # (private)</label><input style={{ ...IS, border:"1px solid #64748b22" }} value={modelNumber} onChange={e=>setModelNumber(e.target.value)} placeholder="e.g. 89201" /></div>
-          <div><label style={LS}>Color Preference</label><input style={IS} value={colorPref} onChange={e=>setColorPref(e.target.value)} placeholder="e.g. Blush Pink, Royal Blue" /></div>
-        </div>
-        <div style={{ display:"flex", gap:16, marginTop:12, flexWrap:"wrap" }}>
-          <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:13, color:pickedUp?"#4ade80":"#64748b" }}>
-            <input type="checkbox" checked={pickedUp} onChange={e=>setPickedUp(e.target.checked)} style={{ width:18, height:18, accentColor:"#4ade80" }} />
-            <span>Order fully picked up</span>
-          </label>
-          <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:13, color:taxExempt?"#fbbf24":"#64748b" }}>
-            <input type="checkbox" checked={taxExempt} onChange={e=>setTaxExempt(e.target.checked)} style={{ width:18, height:18, accentColor:"#fbbf24" }} />
-            <span>Whole order tax exempt</span>
-          </label>
-        </div>
-      </div>
-
-      <div>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-          <div style={{ fontSize:11, color:"#c9a96e", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase" }}>Items ({lineItems.length})</div>
-          <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-            <span style={{ fontSize:10, color:"#64748b" }}>Set all to:</span>
-            <select onChange={e=>{ if(e.target.value) setLineItems(p=>p.map(li=>({...li,status:e.target.value}))); e.target.value=""; }}
-              style={{ background:"#0a1520", border:"1px solid #c9a96e33", borderRadius:6, color:"#c9a96e", padding:"4px 8px", fontSize:11, outline:"none", cursor:"pointer" }}>
-              <option value="">— bulk change —</option>
-              {STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
-            </select>
-          </div>
-        </div>
-        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-          {lineItems.map((li,idx)=><LineItemRow key={li.id} li={li} idx={idx} onChange={updateLI} onRemove={removeLI} canRemove={lineItems.length>1} />)}
-        </div>
-        <button onClick={addLI} style={{ marginTop:10, background:"none", border:"1px dashed #c9a96e55", color:"#c9a96e", borderRadius:8, padding:"9px 16px", cursor:"pointer", fontSize:12, fontWeight:700, width:"100%" }}>+ Add Another Item</button>
-      </div>
-
-      <div style={{ background:"#0a1520", border:"1px solid #818cf818", borderRadius:10, padding:14 }}>
-        <div style={{ fontSize:11, color:"#818cf8", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>Discount</div>
-        <div style={{ display:"grid", gridTemplateColumns:"auto 1fr 2fr", gap:10, alignItems:"end" }}>
-          <div>
-            <label style={LS}>Type</label>
-            <div style={{ display:"flex", borderRadius:8, overflow:"hidden", border:"1px solid #818cf833" }}>
-              {["amount","percent"].map(t=>(
-                <button key={t} onClick={()=>setDiscType(t)} style={{ flex:1, padding:"8px 12px", fontSize:12, fontWeight:700, cursor:"pointer", border:"none", background:discountType===t?"#818cf8":"#070d14", color:discountType===t?"#fff":"#64748b" }}>
-                  {t==="amount"?"$ Off":"% Off"}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label style={LS}>{discountType==="amount"?"Amount ($)":"Percentage (%)"}</label>
-            <input style={{ ...IS, border:"1px solid #818cf833" }} type="number" step="0.01" min="0"
-              value={discount} onChange={e=>setDiscount(e.target.value)} placeholder={discountType==="amount"?"0.00":"0"} />
-          </div>
-          <div style={{ background:"#070d14", border:"1px solid #818cf822", borderRadius:8, padding:"10px 14px" }}>
-            <div style={{ fontSize:11, color:discAmt>0?"#818cf8":"#334155" }}>
-              {discAmt>0?`Saving ${fmt(discAmt)} (${((discAmt/subtotal)*100).toFixed(1)}% off)`:"No discount applied"}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ background:"#0a1520", border:"1px solid #4ade8018", borderRadius:10, padding:14 }}>
-        <div style={{ fontSize:11, color:"#4ade80", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>Payments ({payments.length})</div>
-        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-          {payments.map((p,idx)=><PaymentRow key={p.id} p={p} idx={idx} onChange={updatePay} onRemove={removePay} canRemove={payments.length>1} />)}
-        </div>
-        <button onClick={addPay} style={{ marginTop:10, background:"none", border:"1px dashed #4ade8055", color:"#4ade80", borderRadius:8, padding:"8px 16px", cursor:"pointer", fontSize:12, fontWeight:700, width:"100%" }}>+ Add Another Payment</button>
-        <div style={{ marginTop:12, background:"#070d14", border:"1px solid #c9a96e18", borderRadius:8, padding:"10px 14px", display:"flex", flexDirection:"column", gap:5 }}>
-          {[
-            { label:"Subtotal", val:fmt(subtotal), color:"#94a3b8", big:false },
-            ...(discAmt>0?[{label:"Discount",val:`-${fmt(discAmt)}`,color:"#818cf8",big:false}]:[]),
-            ...(discAmt>0?[{label:"After Discount",val:fmt(afterDisc),color:"#94a3b8",big:false}]:[]),
-            { label:taxExempt?"Tax (exempt)": `Tax (${(TAX_RATE*100).toFixed(2)}%)`, val:taxExempt?"$0.00":fmt(tax), color:"#94a3b8", big:false },
-            { label:"Total", val:fmt(total), color:"#c9a96e", big:true },
-            { label:`Order Payments (${payments.length})`, val:fmt(payments.reduce((s,p)=>s+(parseFloat(p.amount)||0),0)), color:"#4ade80", big:false },
-            ...(allItemPmts>0?[{label:"Item Payments",val:fmt(allItemPmts),color:"#4ade80",big:false}]:[]),
-            { label:"Total Paid", val:fmt(paidSoFar), color:"#4ade80", big:false },
-            { label:"Balance Owed", val:fmt(balance), color:balance>0?"#fb7185":"#4ade80", big:true },
-          ].map(row=>(
-            <div key={row.label} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", paddingTop:row.big?6:0, borderTop:row.big?"1px solid #c9a96e15":"none" }}>
-              <span style={{ fontSize:row.big?13:11, color:row.big?"#e2d5c0":"#64748b", fontWeight:row.big?700:400 }}>{row.label}</span>
-              <span style={{ fontSize:row.big?15:12, color:row.color, fontWeight:row.big?800:500, fontFamily:row.big?"'Playfair Display',serif":"inherit" }}>{row.val}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div><label style={LS}>Payment Status</label>
-        <select style={{ background:"#070d14", border:"1px solid #c9a96e22", borderRadius:8, color:"#e2d5c0", padding:"8px 12px", fontSize:13, outline:"none", boxSizing:"border-box", width:"100%" }}
-          value={paymentType} onChange={e=>setPayType(e.target.value)}>
-          {PAYMENT_TYPES.map(t=><option key={t}>{t}</option>)}
-        </select>
-      </div>
-
-      <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
-        <button onClick={onCancel} style={{ background:"none", border:"1px solid #334155", color:"#94a3b8", borderRadius:8, padding:"9px 22px", cursor:"pointer", fontSize:13 }}>Cancel</button>
-        <button onClick={()=>{
-          const errs=formErrors();
-          if(errs.length>0){ alert("Please fix:\n\n"+errs.join("\n")); return; }
-          onSave({
-            customer, customer2, phone, date, occasion, poNumber, schoolName, referredBy,
-            modelNumber, colorPref, eventDate, photoDate, taxExempt,
-            paymentType, discount:parseFloat(discount)||0, discountType,
-            pickupDate, depositDueDate, pickedUp, archived:initial?.archived||false,
-            payments:payments.map(p=>({...p,amount:parseFloat(p.amount)||0})),
-            lineItems:lineItems.map(li=>({...li,qty:parseInt(li.qty)||1,price:parseFloat(li.price)||0})),
-          });
-        }} style={{ background:"linear-gradient(135deg,#c9a96e,#a87c40)", border:"none", color:"#0a0e14", borderRadius:8, padding:"9px 26px", fontWeight:800, cursor:"pointer", fontSize:13 }}>
-          Save Order
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Print Receipt ────────────────────────────────────────────────────────────
-function printReceipt(o) {
-  const items=o.lineItems||[], pmts=o.payments||[];
-  const subtotal=orderSubtotal(o), discount=orderDiscount(o), afterDisc=orderAfterDisc(o);
-  const tax=orderTax(o), total=orderTotal(o), paid=totalPaid(o), balance=orderBalance(o);
-  const slabel=(key)=>STATUSES.find(s=>s.key===key)?.label||key;
-  const win=window.open("","_blank");
-  win.document.write(`<!DOCTYPE html><html><head>
-    <title>Receipt - ${o.customer}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet"/>
-    <style>
-      *{box-sizing:border-box;margin:0;padding:0}body{font-family:'DM Sans',sans-serif;color:#1a1a2e;padding:36px;max-width:660px;margin:0 auto;font-size:13px}
-      .hdr{text-align:center;border-bottom:3px solid #c9a96e;padding-bottom:18px;margin-bottom:20px}
-      .hdr h1{font-family:'Playfair Display',serif;font-size:28px;color:#a87c40;margin-bottom:4px}
-      .hdr .addr{color:#1a1a2e;font-size:12px;margin-top:6px;line-height:1.6}
-      .hdr .sub{color:#64748b;font-size:11px;letter-spacing:.08em;margin-top:4px}
-      .sec{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#a87c40;margin:18px 0 8px;padding-bottom:4px;border-bottom:1px solid #f0e6d0}
-      .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#fdf8f0;border-radius:8px;padding:12px}
-      .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;background:#fdf8f0;border-radius:8px;padding:12px}
-      .f label{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:2px}
-      .f span{font-size:13px;color:#1a1a2e;font-weight:500}
-      table{width:100%;border-collapse:collapse;margin-top:6px}
-      th{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#64748b;text-align:left;padding:7px 8px;background:#fdf8f0;border-bottom:1px solid #e8d5a3}
-      td{padding:8px;font-size:12px;border-bottom:1px solid #f5ead0;vertical-align:top}
-      .iname{font-weight:600;color:#a87c40}.note{font-size:10px;color:#94a3b8;font-style:italic;margin-top:2px}
-      .badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:20px;background:#f0f0f0;color:#555}
-      .pickup-tag{display:inline-block;font-size:10px;padding:1px 7px;border-radius:20px;background:#d1fae5;color:#065f46;margin-top:2px}
-      .tot{margin-top:16px;background:#fdf8f0;border-radius:8px;padding:14px}
-      .tr{display:flex;justify-content:space-between;padding:4px 0;font-size:13px}
-      .tr.div{border-top:1px solid #e8d5a3;margin-top:5px;padding-top:8px}
-      .tr.big{font-weight:800;font-size:16px;font-family:'Playfair Display',serif}
-      .tr .l{color:#64748b}.tr.big .l{color:#1a1a2e}
-      .gold{color:#a87c40}.green{color:#16a34a}.red{color:#dc2626}.purple{color:#6d28d9}
-      .due-box{background:#fff8e1;border:1px solid #f59e0b44;border-radius:8px;padding:10px 14px;margin-top:14px;font-size:12px}
-      .due-box strong{color:#92400e}
-      .policy{margin-top:18px;background:#fff5f5;border:1px solid #fca5a544;border-radius:8px;padding:12px 16px;font-size:11px;line-height:1.6;color:#7f1d1d}
-      .policy .ptitle{font-weight:800;font-size:12px;letter-spacing:.04em;margin-bottom:6px;color:#b91c1c}
-      .sig{margin-top:20px;padding-top:16px;border-top:1px solid #e8d5a3}
-      .sig-line{border-bottom:1px solid #1a1a2e;margin-top:32px;width:75%}
-      .sig-label{font-size:10px;color:#64748b;margin-top:4px;letter-spacing:.06em;text-transform:uppercase}
-      .ft{text-align:center;margin-top:20px;padding-top:14px;border-top:1px solid #e8d5a3;font-size:11px;color:#94a3b8;line-height:1.8}
-      @media print{button{display:none}}
-    </style></head><body>
-    <div class="hdr">
-      <h1>✦ ${BOUTIQUE_NAME}</h1>
-      <div class="addr">${STORE_ADDRESS}<br/>${STORE_PHONE}</div>
-      <div class="sub">SALES RECEIPT · ${o.date||""}</div>
-    </div>
-    <div class="sec">Customer Information</div>
-    <div class="grid3">
-      <div class="f"><label>Name</label><span>${o.customer||"—"}</span></div>
-      ${o.customer2?`<div class="f"><label>2nd Name</label><span>${o.customer2}</span></div>`:`<div></div>`}
-      <div class="f"><label>Phone</label><span>${o.phone||"—"}</span></div>
-    </div>
-    ${(o.eventDate||o.photoDate)?`
-    <div class="sec">Important Dates</div>
-    <div class="grid2">
-      ${o.eventDate?`<div class="f"><label>Event Date</label><span>${o.eventDate}</span></div>`:""}
-      ${o.photoDate?`<div class="f"><label>Photo / Shoot Date</label><span>${o.photoDate}</span></div>`:""}
-    </div>`:""}
-    <div class="sec">Items Ordered</div>
-    <table><thead><tr><th>Item</th><th>Size / Color</th><th>Qty</th><th>Price</th><th>Status</th></tr></thead><tbody>
-      ${items.map(li=>`<tr>
-        <td><div class="iname">${li.item||"—"}</div>${(!li.notePrivate&&li.note)?`<div class="note">Note: ${li.note}</div>`:""}${li.pickedUp?`<div class="pickup-tag">✓ Picked Up</div>`:""}</td>
-        <td style="color:#64748b">${[li.size,li.color].filter(Boolean).join(" / ")||"—"}</td>
-        <td>${li.qty}</td><td>${fmt((parseFloat(li.price)||0)*(parseInt(li.qty)||1))}</td>
-        <td><span class="badge">${slabel(li.status)}</span>${li.eta?`<div style="font-size:10px;color:#64748b;margin-top:2px">ETA: ${li.eta}</div>`:""}</td>
-      </tr>`).join("")}
-    </tbody></table>
-    <div class="sec">Payment History</div>
-    <table><thead><tr><th>#</th><th>Date</th><th>Amount</th><th>Note</th></tr></thead><tbody>
-      ${pmts.map((p,i)=>`<tr>
-        <td style="color:#64748b">${i+1}</td><td>${p.date||"—"}</td>
-        <td class="green" style="font-weight:700">${fmt(parseFloat(p.amount))}</td>
-        <td style="color:#64748b;font-style:italic">${p.note||"—"}</td>
-      </tr>`).join("")}
-    </tbody></table>
-    <div class="tot">
-      <div class="tr"><span class="l">Subtotal</span><span>${fmt(subtotal)}</span></div>
-      ${discount>0?`<div class="tr"><span class="l purple">Discount Applied</span><span class="purple">-${fmt(discount)}</span></div>`:""}
-      ${discount>0?`<div class="tr"><span class="l">After Discount</span><span>${fmt(afterDisc)}</span></div>`:""}
-      <div class="tr"><span class="l">Tax (${(TAX_RATE*100).toFixed(2)}%)</span><span>${fmt(tax)}</span></div>
-      <div class="tr div big"><span class="l">Total</span><span class="gold">${fmt(total)}</span></div>
-      <div class="tr" style="margin-top:8px"><span class="l">Payment Status</span><span>${o.paymentType||"—"}</span></div>
-      <div class="tr"><span class="l">Total Paid (${pmts.length} payment${pmts.length!==1?"s":""})</span><span class="green">${fmt(paid)}</span></div>
-      <div class="tr div big"><span class="l">Balance Due</span><span class="${balance>0?"red":"green"}">${fmt(balance)}</span></div>
-      ${o.pickedUp?`<div class="tr" style="margin-top:8px"><span style="color:#065f46;font-weight:700">✓ Order fully picked up</span></div>`:""}
-    </div>
-    ${o.depositDueDate?`<div class="due-box">📅 <strong>Next Payment Due: ${o.depositDueDate}</strong> — Please ensure timely payments to hold your order. Quinceañera dresses require full payment within 3 months of order date or by the agreed pickup date.</div>`:""}
-    <div class="policy">
-      <div class="ptitle">⚠ Store Policy — Please Read Before Signing</div>
-      <strong>NO REFUNDS · NO EXCHANGES · ALL SALES ARE FINAL</strong><br/>
-      By signing below, the customer acknowledges that all purchases are final sale. No refunds, returns, or exchanges will be accepted for any reason, including change of mind, fit issues, or event cancellation. Layaway and deposit payments are non-refundable. Unclaimed orders held beyond 30 days after the agreed pickup date may be forfeited without refund.<br/><br/>
-      <strong>SIN REEMBOLSOS · SIN CAMBIOS · TODAS LAS VENTAS SON FINALES</strong><br/>
-      Al firmar, el cliente reconoce que todas las compras son finales. No se aceptarán devoluciones, cambios ni reembolsos por ningún motivo. Los pagos de layaway y depósito no son reembolsables.
-    </div>
-    <div class="sig">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:10px">
-        <div><div class="sig-line"></div><div class="sig-label">Customer Signature / Firma del Cliente</div></div>
-        <div><div class="sig-line"></div><div class="sig-label">Date / Fecha</div></div>
-      </div>
-      ${o.customer2?`<div style="margin-top:24px"><div class="sig-line"></div><div class="sig-label">2nd Signature (${o.customer2})</div></div>`:""}
-    </div>
-    <div class="ft">Thank you for shopping at ${BOUTIQUE_NAME}!<br/>${STORE_PHONE} · ${STORE_ADDRESS}</div>
-    <script>window.onload=()=>window.print();</script>
-  </body></html>`);
-  win.document.close();
-}
-
-// ─── Appointment Form ─────────────────────────────────────────────────────────
-function ApptForm({ date, onSave, onClose }) {
-  const [label,   setLabel]   = useState("");
-  const [apptDate,setApptDate]= useState(date||new Date().toISOString().split("T")[0]);
-  const [time,    setTime]    = useState("");
-  const [type,    setType]    = useState("appointment");
-  const IS = { background:"#070d14", border:"1px solid #818cf822", borderRadius:8, color:"#e2d5c0", padding:"8px 12px", fontSize:13, outline:"none", boxSizing:"border-box", width:"100%" };
-  const TYPES = [["appointment","Appointment / Try-on"],["consultation","New Customer Consult"],["other","Other Note"]];
-  return (
-    <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-      <div>
-        <label style={{ ...{color:"#64748b",fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:3,display:"block"} }}>Type</label>
-        <select style={IS} value={type} onChange={e=>setType(e.target.value)}>
-          {TYPES.map(([k,l])=><option key={k} value={k}>{l}</option>)}
-        </select>
-      </div>
-      <div>
-        <label style={{ color:"#64748b",fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:3,display:"block" }}>Description</label>
-        <input style={IS} value={label} onChange={e=>setLabel(e.target.value)} placeholder="e.g. Try-on: Sofia Reyes, 2pm" />
-      </div>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-        <div>
-          <label style={{ color:"#64748b",fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:3,display:"block" }}>Date</label>
-          <input style={IS} type="date" value={apptDate} onChange={e=>setApptDate(e.target.value)} />
-        </div>
-        <div>
-          <label style={{ color:"#64748b",fontSize:10,fontWeight:700,letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:3,display:"block" }}>Time (optional)</label>
-          <input style={IS} type="time" value={time} onChange={e=>setTime(e.target.value)} />
-        </div>
-      </div>
-      <div style={{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:4 }}>
-        <button onClick={onClose} style={{ background:"none", border:"1px solid #334155", color:"#94a3b8", borderRadius:8, padding:"8px 18px", cursor:"pointer", fontSize:13 }}>Cancel</button>
-        <button onClick={()=>label&&onSave({ label:`${label}${time?` · ${time}`:""}`, date:apptDate, type })}
-          style={{ background:"#818cf8", border:"none", color:"#fff", borderRadius:8, padding:"8px 20px", cursor:"pointer", fontSize:13, fontWeight:700 }}>Save</button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main App ─────────────────────────────────────────────────────────────────
-export default function BoutiqueTracker() {
-  const [orders,        setOrders]       = useState([]);
-  const [loading,       setLoading]      = useState(true);
-  const [error,         setError]        = useState(null);
-  const [activeTab,     setActiveTab]    = useState("active");
-  const [calMonth,      setCalMonth]     = useState(new Date().getMonth());
-  const [calYear,       setCalYear]      = useState(new Date().getFullYear());
-  const [appointments,  setAppointments] = useState([]);
-  const [showApptForm,  setShowApptForm] = useState(null); // null | date string
-  const [showAdd,       setShowAdd]      = useState(false);
-  const [editOrder,     setEditOrder]    = useState(null);
-  const [viewOrder,     setViewOrder]    = useState(null);
-  const [deleteConfirm, setDeleteConfirm]= useState(null);
-  const [search,        setSearch]       = useState("");
-  const [filterStatus,  setFilterStatus] = useState("all");
-  const [filterOccasion,setFilterOcc]    = useState("all");
-  const [showPin,       setShowPin]      = useState(false);
-  const [pinUnlocked,   setPinUnlocked]  = useState(false);
-  const [activityLog,   setActivityLog]  = useState([]);
-
-  const logActivity = (icon, action, customer) => {
-    const now = new Date();
-    setActivityLog(p=>[{
-      id: Math.random().toString(36).slice(2),
-      icon, action, customer,
-      time: now.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true}),
-      date: now.toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}),
-      ts: now.getTime(),
-    }, ...p]);
-  };
-
-  // ── Load orders and appointments from Supabase ──
-  useEffect(()=>{
-    loadOrders();
-    loadAppointments();
-  },[]);
-
-  const loadAppointments = async () => {
-    try {
-      const res = await sbFetch("/appointments?order=date.asc", { prefer:"" });
-      if (!res.ok) return;
-      const data = await res.json();
-      setAppointments(data.map(r=>({ id:r.id, label:r.label, date:r.date, time:r.time||"", type:r.type||"appointment" })));
-    } catch(e) { console.error("Could not load appointments"); }
-  };
-
-  const saveAppointment = async (appt) => {
-    try {
-      const res = await sbFetch("/appointments", { method:"POST", body:JSON.stringify({ label:appt.label, date:appt.date, time:appt.time||"", type:appt.type||"appointment" }) });
-      if (!res.ok) throw new Error("Save failed");
-      const [row] = await res.json();
-      setAppointments(p=>[...p, { id:row.id, label:row.label, date:row.date, time:row.time||"", type:row.type }]);
-      logActivity("📅", `Appointment added — ${appt.label}`, "");
-    } catch(e) { alert("Error saving appointment."); }
-  };
-
-  const deleteAppointment = async (id) => {
-    try {
-      await sbFetch(`/appointments?id=eq.${id}`, { method:"DELETE", prefer:"" });
-      setAppointments(p=>p.filter(a=>a.id!==id));
-      logActivity("🗑️", "Appointment removed", "");
-    } catch(e) { alert("Error deleting appointment."); }
-  };
-
-  const loadOrders = async () => {
-    setLoading(true); setError(null);
-    try {
-      const res = await sbFetch("/orders?order=created_at.asc", { prefer:"" });
-      if (!res.ok) throw new Error("Failed to load");
-      const data = await res.json();
-      setOrders(data.map(dbToOrder));
-    } catch(e) {
-      setError("Could not connect to database. Check your internet connection.");
-    } finally { setLoading(false); }
-  };
-
-  const saveNew = async (form) => {
-    try {
-      const res = await sbFetch("/orders", { method:"POST", body:JSON.stringify(orderToDb(form)) });
-      if (!res.ok) throw new Error("Save failed");
-      const [row] = await res.json();
-      setOrders(p=>[...p, dbToOrder(row)]);
-      logActivity("✅", "New order created", form.customer);
-      setShowAdd(false);
-    } catch(e) { alert("Error saving order. Please try again."); }
-  };
-
-  const saveEdit = async (form) => {
-    try {
-      const old = orders.find(o=>o.id===editOrder.id);
-      const res = await sbFetch(`/orders?id=eq.${editOrder.id}`, { method:"PATCH", body:JSON.stringify(orderToDb(form)) });
-      if (!res.ok) throw new Error("Update failed");
-      const [row] = await res.json();
-      setOrders(p=>p.map(o=>o.id===editOrder.id?dbToOrder(row):o));
-
-      // Detailed change detection
-      const changes = [];
-      if(old.paymentType!==form.paymentType) changes.push(`Payment status → ${form.paymentType}`);
-      if(old.pickupDate!==form.pickupDate) changes.push(`Pickup date → ${form.pickupDate||"cleared"}`);
-      if(old.depositDueDate!==form.depositDueDate) changes.push(`Payment due → ${form.depositDueDate||"cleared"}`);
-      if(old.pickedUp!==form.pickedUp) changes.push(form.pickedUp?"Order marked picked up":"Order pickup unmarked");
-
-      // Payment changes
-      const oldPaid = (old.payments||[]).reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
-      const newPaid = (form.payments||[]).reduce((s,p)=>s+(parseFloat(p.amount)||0),0);
-      if(form.payments.length > (old.payments||[]).length) changes.push(`Payment added — ${fmt(newPaid-oldPaid)}`);
-      else if(newPaid!==oldPaid) changes.push(`Payment updated — total now ${fmt(newPaid)}`);
-
-      // Item status changes
-      (form.lineItems||[]).forEach((li,i)=>{
-        const oldLi = (old.lineItems||[])[i];
-        if(oldLi && oldLi.status!==li.status) {
-          const oldLabel = STATUSES.find(s=>s.key===oldLi.status)?.label||oldLi.status;
-          const newLabel = STATUSES.find(s=>s.key===li.status)?.label||li.status;
-          changes.push(`"${li.item||`Item ${i+1}`}" → ${newLabel}`);
-        }
-        if(oldLi && !oldLi.pickedUp && li.pickedUp) changes.push(`"${li.item||`Item ${i+1}`}" marked picked up`);
-        if(oldLi && !oldLi.paid && li.paid) changes.push(`"${li.item||`Item ${i+1}`}" marked paid`);
-      });
-      if((form.lineItems||[]).length > (old.lineItems||[]).length) changes.push(`${(form.lineItems||[]).length-(old.lineItems||[]).length} item(s) added`);
-
-      if(changes.length>0) {
-        changes.forEach(c=>logActivity("✏️", c, form.customer));
-      } else {
-        logActivity("✏️", "Order updated", form.customer);
-      }
-      setEditOrder(null);
-    } catch(e) { alert("Error updating order. Please try again."); }
-  };
-
-  const deleteOrder = async (id) => {
-    try {
-      const o = orders.find(x=>x.id===id);
-      await sbFetch(`/orders?id=eq.${id}`, { method:"DELETE", prefer:"" });
-      setOrders(p=>p.filter(o=>o.id!==id));
-      logActivity("🗑️", "Order deleted", o?.customer||"");
-      setDeleteConfirm(null); setViewOrder(null);
-    } catch(e) { alert("Error deleting order."); }
-  };
-
-  const archiveOrder = async (id) => {
-    try {
-      const o = orders.find(x=>x.id===id);
-      const res = await sbFetch(`/orders?id=eq.${id}`, { method:"PATCH", body:JSON.stringify({ archived:true }) });
-      const [row] = await res.json();
-      setOrders(p=>p.map(o=>o.id===id?dbToOrder(row):o));
-      logActivity("🗄️", "Order filed to Past Customers", o?.customer||"");
-      setViewOrder(null);
-    } catch(e) { alert("Error archiving order."); }
-  };
-
-  const unarchive = async (id) => {
-    try {
-      const o = orders.find(x=>x.id===id);
-      const res = await sbFetch(`/orders?id=eq.${id}`, { method:"PATCH", body:JSON.stringify({ archived:false }) });
-      const [row] = await res.json();
-      setOrders(p=>p.map(o=>o.id===id?dbToOrder(row):o));
-      logActivity("♻️", "Order restored to Active", o?.customer||"");
-      setViewOrder(null);
-    } catch(e) { alert("Error restoring order."); }
-  };
-
-  const exportToCSV = () => {
-    const rows = [
-      ["Customer","2nd Name","Phone","Order Date","Occasion","School","PO#","Referred By","Model#","Color Pref","Event Date","Photo Date","Pickup Date","Payment Due","Payment Status","Picked Up","Item","Size","Color","Qty","Price","Item Total","Tax","Brand","Status","ETA","Note","Note Private","Paid","Padrino Name","Padrino Amount","Subtotal","Discount","Total w/Tax","Total Paid","Balance Owed"]
+  useEffect(() => {
+    loadAll();
+    const subs = [
+      supabase.channel('ch').on('postgres_changes',{event:'*',schema:'public',table:'chores'},()=>supabase.from('chores').select('*').order('id').then(({data})=>{if(data)setChores(data);})).subscribe(),
+      supabase.channel('mg').on('postgres_changes',{event:'*',schema:'public',table:'manager_items'},()=>supabase.from('manager_items').select('*').order('id').then(({data})=>{if(data)setManagerItems(data);})).subscribe(),
+      supabase.channel('ln').on('postgres_changes',{event:'*',schema:'public',table:'laundry_schedule'},()=>supabase.from('laundry_schedule').select('*').order('id').then(({data})=>{if(data)setLaundry(data);})).subscribe(),
+      supabase.channel('td').on('postgres_changes',{event:'*',schema:'public',table:'todos'},()=>supabase.from('todos').select('*').order('created_at',{ascending:false}).then(({data})=>{if(data)setTodos(data);})).subscribe(),
+      supabase.channel('dl').on('postgres_changes',{event:'*',schema:'public',table:'deals'},()=>supabase.from('deals').select('*').order('created_at',{ascending:false}).then(({data})=>{if(data)setDeals(data);})).subscribe(),
+      supabase.channel('ap').on('postgres_changes',{event:'*',schema:'public',table:'appointments'},()=>supabase.from('appointments').select('*').order('date').order('time').then(({data})=>{if(data)setAppointments(data);})).subscribe(),
     ];
-    orders.forEach(o=>{
-      const sub=orderSubtotal(o), disc=orderDiscount(o), tax=orderTax(o), total=orderTotal(o), paid=totalPaid(o), bal=orderBalance(o);
-      (o.lineItems||[]).forEach((li,i)=>{
-        const itemTotal=(parseFloat(li.price)||0)*(parseInt(li.qty)||1);
-        rows.push([
-          o.customer, o.customer2||"", o.phone||"", o.date||"", o.occasion||"",
-          o.schoolName||"", o.poNumber||"", o.referredBy||"", o.modelNumber||"", o.colorPref||"",
-          o.eventDate||"", o.photoDate||"", o.pickupDate||"", o.depositDueDate||"",
-          o.paymentType||"", o.pickedUp?"Yes":"No",
-          li.item||"", li.size||"", li.color||"", li.qty, li.price,
-          itemTotal.toFixed(2), i===0?(itemTotal/sub*tax).toFixed(2):"",
-          li.brand||"", STATUSES.find(s=>s.key===li.status)?.label||li.status||"",
-          li.eta||"", li.note||"", li.notePrivate!==false?"Private":"Public",
-          li.paid?"Yes":"No", li.padrinoName||"", li.padrinoAmount||"",
-          i===0?sub.toFixed(2):"", i===0?disc.toFixed(2):"",
-          i===0?total.toFixed(2):"", i===0?paid.toFixed(2):"", i===0?bal.toFixed(2):"",
-        ]);
-      });
-    });
-    const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], {type:"text/csv"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href=url; a.download=`tienda-guadalupana-orders-${new Date().toISOString().split("T")[0]}.csv`;
-    a.click(); URL.revokeObjectURL(url);
-    logActivity("📥","Orders exported to spreadsheet","");
-  };
+    return () => subs.forEach(s => supabase.removeChannel(s));
+  }, [loadAll]);
 
-  const activeOrders   = useMemo(()=>orders.filter(o=>!o.archived),[orders]);
-  const archivedOrders = useMemo(()=>orders.filter(o=>o.archived),[orders]);
+  useEffect(() => {
+    const check = () => {
+      const today = new Date().toDateString();
+      if (localStorage.getItem('lastReset') !== today) {
+        localStorage.setItem('lastReset', today);
+        supabase.from('chores').update({done:false,done_by:null,done_at:null}).neq('id',0).then(loadAll);
+      }
+    };
+    check();
+    const iv = setInterval(check, 60000);
+    return () => clearInterval(iv);
+  }, [loadAll]);
 
-  const filtered = useMemo(()=>{
-    const pool = activeTab==="archived"?archivedOrders:activeOrders;
-    return pool.filter(o=>{
-      const q=search.toLowerCase();
-      const matchSearch=!q||(o.customer||"").toLowerCase().includes(q)||(o.customer2||"").toLowerCase().includes(q)||(o.phone||"").includes(q)||(o.poNumber||"").toLowerCase().includes(q)||(o.schoolName||"").toLowerCase().includes(q)||(o.referredBy||"").toLowerCase().includes(q)||(o.lineItems||[]).some(li=>(li.item||"").toLowerCase().includes(q));
-      const matchStatus=filterStatus==="all"||(o.lineItems||[]).some(li=>li.status===filterStatus);
-      const matchOcc=filterOccasion==="all"||o.occasion===filterOccasion;
-      return matchSearch&&matchStatus&&matchOcc;
-    });
-  },[orders,activeTab,search,filterStatus,filterOccasion,activeOrders,archivedOrders]);
+  async function toggleDone(chore) {
+    const newDone = !chore.done;
+    await supabase.from('chores').update({ done:newDone, done_by:newDone?activeUser:null, done_at:newDone?new Date().toISOString():null }).eq('id',chore.id);
+  }
+  async function saveChore() {
+    if (!choreForm.title.trim()) return;
+    setSaving(true);
+    if (editingChore) await supabase.from('chores').update(choreForm).eq('id',editingChore.id);
+    else await supabase.from('chores').insert({...choreForm,done:false});
+    setSaving(false); setShowModal(false);
+  }
+  async function deleteChore(id) { await supabase.from('chores').delete().eq('id',id); }
+  async function saveLaundry() {
+    if (!laundryForm.person.trim()) return;
+    setSaving(true);
+    if (editingLaundry) await supabase.from('laundry_schedule').update(laundryForm).eq('id',editingLaundry.id);
+    else await supabase.from('laundry_schedule').insert(laundryForm);
+    setSaving(false); setShowModal(false); setEditingLaundry(null);
+  }
+  async function deleteLaundry(id) { await supabase.from('laundry_schedule').delete().eq('id',id); }
+  async function saveManager() {
+    if (!managerForm.title.trim()) return;
+    setSaving(true);
+    if (editingManager) await supabase.from('manager_items').update(managerForm).eq('id',editingManager.id);
+    else await supabase.from('manager_items').insert({...managerForm,last_done:null});
+    setSaving(false); setShowModal(false);
+  }
+  async function deleteManager(id) { await supabase.from('manager_items').delete().eq('id',id); }
+  async function markManagerDone(id) { await supabase.from('manager_items').update({last_done:new Date().toISOString().split('T')[0]}).eq('id',id); }
+  async function saveTodo() {
+    if (!todoForm.title.trim()) return;
+    setSaving(true);
+    if (editingTodo) await supabase.from('todos').update(todoForm).eq('id',editingTodo.id);
+    else await supabase.from('todos').insert({...todoForm,done:false,done_by:null,done_at:null});
+    setSaving(false); setShowModal(false); setEditingTodo(null);
+  }
+  async function toggleTodo(todo) {
+    const nd = !todo.done;
+    await supabase.from('todos').update({done:nd,done_by:nd?activeUser:null,done_at:nd?new Date().toISOString():null}).eq('id',todo.id);
+  }
+  async function deleteTodo(id) { await supabase.from('todos').delete().eq('id',id); }
+  async function saveAppt() {
+    if (!apptForm.title.trim()||!apptForm.date) return;
+    setSaving(true);
+    if (editingAppt) await supabase.from('appointments').update(apptForm).eq('id',editingAppt.id);
+    else await supabase.from('appointments').insert({...apptForm,added_by:activeUser});
+    setSaving(false); setShowModal(false); setEditingAppt(null);
+  }
+  async function deleteAppt(id) { await supabase.from('appointments').delete().eq('id',id); }
 
-  const totals=useMemo(()=>({
-    orders:  activeOrders.length,
-    layaway: activeOrders.filter(o=>o.paymentType==="Layaway"||o.paymentType==="Deposit").length,
-    subtotal:activeOrders.reduce((s,o)=>s+orderSubtotal(o),0),
-    discount:activeOrders.reduce((s,o)=>s+orderDiscount(o),0),
-    tax:     activeOrders.reduce((s,o)=>s+orderTax(o),0),
-    value:   activeOrders.reduce((s,o)=>s+orderTotal(o),0),
-    paid:    activeOrders.reduce((s,o)=>s+totalPaid(o),0),
-    owed:    activeOrders.reduce((s,o)=>s+orderBalance(o),0),
-  }),[activeOrders]);
+  // Deals actions
+  async function saveDeal() {
+    if (!dealForm.title.trim()||!dealForm.store.trim()) return;
+    setSaving(true);
+    const payload = {...dealForm, submitted_by:activeUser, status: activeUser==='Daisy'?'approved':'pending'};
+    if (editingDeal) await supabase.from('deals').update(payload).eq('id',editingDeal.id);
+    else await supabase.from('deals').insert(payload);
+    setSaving(false); setShowModal(false); setEditingDeal(null);
+  }
+  async function approveDeal(id) { await supabase.from('deals').update({status:'approved'}).eq('id',id); }
+  async function rejectDeal(id) { await supabase.from('deals').update({status:'rejected'}).eq('id',id); }
+  async function deleteDeal(id) { await supabase.from('deals').delete().eq('id',id); }
+  async function toggleDealUsed(deal) { await supabase.from('deals').update({used:!deal.used}).eq('id',deal.id); }
 
-  const TABS=[
-    { key:"active",     label:`Active (${activeOrders.length})` },
-    { key:"archived",   label:`Past Customers (${archivedOrders.length})` },
-    { key:"calendar",   label:"📅 Calendar" },
-    { key:"dashboard",  label:"🏠 Dashboard" },
-    { key:"activity",   label:"🕐 Activity" },
-    { key:"financials", label:"📊 Financials" },
-  ];
+  function apptsByDate(ds) { return appointments.filter(a=>a.date===ds).sort((a,b)=>(a.time||'').localeCompare(b.time||'')); }
+  function upcomingAppts() { return appointments.filter(a=>a.date>=todayStr()).sort((a,b)=>a.date.localeCompare(b.date)||(a.time||'').localeCompare(b.time||'')); }
+
+  const isManager = MANAGERS.includes(activeUser);
+  const todayChores = chores.filter(isDueToday).filter(c=>isManager||c.assigned_to==='Everyone'||c.assigned_to===activeUser);
+  const allChores = filter==='all' ? chores : chores.filter(c=>c.assigned_to===filter||c.assigned_to==='Everyone');
+  const todayLaundry = laundry.find(l=>l.day===todayName);
+  const urgentCount = managerItems.filter(i=>getStatus(i)==='overdue'||getStatus(i)==='never').length;
+  const openTodos = todos.filter(t=>!t.done);
+  const todayAppts = apptsByDate(todayStr());
+  const approvedDeals = deals.filter(d=>d.status==='approved'&&!d.used);
+  const pendingDeals = deals.filter(d=>d.status==='pending');
+  const usedDeals = deals.filter(d=>d.used);
+  const displayDeals = dealView==='approved'?approvedDeals:dealView==='pending'?pendingDeals:usedDeals;
+  const filteredDeals = dealCatFilter==='All'?displayDeals:displayDeals.filter(d=>d.category===dealCatFilter);
+  const visibleTodos = isManager ? todos : todos.filter(t=>t.assigned_to==='Anyone'||t.assigned_to===activeUser);
+  const filteredTodos = [...visibleTodos].filter(t=>todoFilter==='open'?!t.done:t.done).sort((a,b)=>({high:0,normal:1,low:2}[a.priority]||1)-({high:0,normal:1,low:2}[b.priority]||1));
+  const filteredManager = [...managerItems].filter(i=>managerCat==='All'||i.category===managerCat).sort((a,b)=>managerSort==='status'?({never:0,overdue:1,soon:2,ok:3}[getStatus(a)]-{never:0,overdue:1,soon:2,ok:3}[getStatus(b)]):a.title.localeCompare(b.title));
+
+  const year = calDate.getFullYear(), month = calDate.getMonth();
+  const daysInMonth = new Date(year,month+1,0).getDate();
+  const firstDay = new Date(year,month,1).getDay();
+  const calCells = [];
+  for (let i=0;i<firstDay;i++) calCells.push(null);
+  for (let d=1;d<=daysInMonth;d++) calCells.push(d);
+  const todayD = new Date();
+
+  if (loading) return (
+    <div style={{minHeight:'100vh',background:'linear-gradient(135deg,#1a0a2e,#2d1654)',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:12,fontFamily:'Georgia,serif',color:'#f5e6d3'}}>
+      <div style={{fontSize:36}}>🏡</div>
+      <div style={{fontSize:14,color:'rgba(245,230,211,0.5)'}}>Loading Casa…</div>
+    </div>
+  );
 
   return (
-    <div style={{ minHeight:"100vh", background:"#070d14", fontFamily:"'DM Sans',sans-serif", color:"#e2d5c0" }}>
-      <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet" />
+    <div style={{minHeight:'100vh',background:'linear-gradient(135deg,#1a0a2e 0%,#2d1654 40%,#1a0a2e 100%)',fontFamily:"'Georgia','Times New Roman',serif",color:'#f5e6d3'}}>
 
       {/* Header */}
-      <div style={{ background:"linear-gradient(180deg,#0a1520 0%,#070d14 100%)", borderBottom:"1px solid #c9a96e22", padding:"20px 24px", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
-        <div>
-          <h1 style={{ fontFamily:"'Playfair Display',serif", fontSize:26, margin:0, background:"linear-gradient(135deg,#c9a96e,#f5e3b8)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>✦ {BOUTIQUE_NAME}</h1>
-          <p style={{ color:"#94a3b8", fontSize:11, margin:"2px 0 0", letterSpacing:"0.1em", textTransform:"uppercase" }}>Order Management System</p>
-        </div>
-        <div style={{ display:"flex", gap:10 }}>
-          <button onClick={exportToCSV} style={{ background:"#0a1520", border:"1px solid #4ade8033", borderRadius:10, padding:"10px 16px", color:"#4ade80", fontWeight:700, fontSize:12, cursor:"pointer" }}>📥 Export</button>
-          <button onClick={()=>setShowAdd(true)} style={{ background:"linear-gradient(135deg,#c9a96e,#a87c40)", border:"none", borderRadius:10, padding:"10px 22px", color:"#0a0e14", fontWeight:800, fontSize:13, cursor:"pointer", boxShadow:"0 4px 20px #c9a96e33" }}>+ New Order</button>
-        </div>
-      </div>
-
-      {/* Error banner */}
-      {error&&<div style={{ background:"#fb718522", border:"1px solid #fb718544", color:"#fb7185", padding:"10px 24px", fontSize:13, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        {error} <button onClick={loadOrders} style={{ background:"#fb7185", border:"none", color:"#fff", borderRadius:6, padding:"4px 12px", cursor:"pointer", fontSize:12 }}>Retry</button>
-      </div>}
-
-      {/* Always-visible stats */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:10, padding:"16px 24px 0" }}>
-        {[
-          { label:"Active Orders", val:totals.orders,  col:"#c9a96e" },
-          { label:"Layaway/Dep.",  val:totals.layaway, col:"#f59e0b" },
-        ].map(s=>(
-          <div key={s.label} style={{ background:"#0a1520", border:"1px solid #c9a96e18", borderRadius:12, padding:"12px 14px" }}>
-            <div style={{ fontSize:10, color:"#64748b", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>{s.label}</div>
-            <div style={{ fontSize:22, fontWeight:800, color:s.col, fontFamily:"'Playfair Display',serif" }}>{loading?"…":s.val}</div>
+      <div style={{position:'relative',zIndex:1,padding:'22px 18px 13px',borderBottom:'1px solid rgba(245,230,211,0.15)',background:'rgba(255,255,255,0.03)',backdropFilter:'blur(8px)'}}>
+        <div style={{maxWidth:480,margin:'0 auto'}}>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+            <span style={{fontSize:24}}>🏡</span>
+            <div style={{flex:1}}>
+              <h1 style={{margin:0,fontSize:19,fontWeight:700,color:'#f5e6d3'}}>Casa</h1>
+              <p style={{margin:0,fontSize:11,color:'rgba(245,230,211,0.4)',letterSpacing:'0.09em',textTransform:'uppercase'}}>{new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'})}</p>
+            </div>
+            {urgentCount>0&&<div onClick={()=>setActiveTab('manager')} style={{background:'rgba(224,90,90,0.2)',border:'1px solid rgba(224,90,90,0.45)',borderRadius:18,padding:'4px 9px',fontSize:11,color:'#e05a5a',cursor:'pointer',whiteSpace:'nowrap'}}>⚠️ {urgentCount} urgent</div>}
           </div>
-        ))}
+          <div style={{marginBottom:4}}>
+            <p style={{margin:'0 0 5px',fontSize:10,color:'rgba(245,230,211,0.4)',letterSpacing:'0.08em',textTransform:'uppercase'}}>Marking as:</p>
+            <div style={{display:'flex',gap:5,overflowX:'auto',paddingBottom:3}}>
+              {FAMILY.map(n=>(
+                <button key={n} onClick={()=>setActiveUser(n)} style={{padding:'4px 12px',borderRadius:18,border:'1px solid',borderColor:activeUser===n?'#dc783c':'rgba(245,230,211,0.2)',background:activeUser===n?'rgba(220,120,60,0.2)':'transparent',color:activeUser===n?'#dc783c':'rgba(245,230,211,0.5)',fontSize:12,cursor:'pointer',whiteSpace:'nowrap',fontFamily:'inherit',fontWeight:activeUser===n?700:400}}>{n}</button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display:"flex", padding:"16px 24px 0", borderBottom:"1px solid #c9a96e18", flexWrap:"wrap" }}>
-        {TABS.map(t=>(
-          <button key={t.key} onClick={()=>{ if(t.key==="financials"&&!pinUnlocked){ setShowPin(true); } else { setActiveTab(t.key); } }}
-            style={{ padding:"10px 18px", fontSize:12, fontWeight:700, cursor:"pointer", border:"none", borderBottom:activeTab===t.key?"2px solid #c9a96e":"2px solid transparent", background:"transparent", color:activeTab===t.key?"#c9a96e":"#64748b", transition:"all 0.15s" }}>
-            {t.label}{t.key==="financials"&&!pinUnlocked?" 🔒":""}
-          </button>
-        ))}
-      </div>
+      {todayLaundry&&<div style={{background:'linear-gradient(90deg,rgba(220,120,60,0.22),rgba(180,80,160,0.13))',borderBottom:'1px solid rgba(220,120,60,0.28)',padding:'7px 18px',textAlign:'center',fontSize:12,color:'#e8b88a'}}>👕 Today's laundry day: <strong>{todayLaundry.person}</strong></div>}
 
-      {/* Financials Tab */}
-      {activeTab==="dashboard"&&(()=>{
-        const today = new Date();
-        const todayStr = today.toISOString().split("T")[0];
-        const in7days = new Date(today.getTime()+7*24*60*60*1000).toISOString().split("T")[0];
+      <div style={{maxWidth:480,margin:'0 auto',padding:'0 14px'}}>
+        {/* Tabs */}
+        <div style={{display:'flex',gap:2,marginTop:12,marginBottom:12,background:'rgba(255,255,255,0.05)',borderRadius:11,padding:3}}>
+          {[['today','Today'],['all','Chores'],['laundry','👕'],['todos','📝'],['calendar','📅'],['manager','🏠']].map(([key,label])=>(
+            <button key={key} onClick={()=>setActiveTab(key)} style={{flex:1,padding:'7px 2px',border:'none',borderRadius:8,background:activeTab===key?(key==='manager'?'rgba(224,90,90,0.32)':key==='todos'?'rgba(100,149,237,0.35)':key==='calendar'?'rgba(92,184,122,0.32)':key==='deals'?'rgba(155,90,220,0.35)':key==='flylady'?'rgba(255,182,193,0.35)':'rgba(220,120,60,0.38)'):'transparent',color:activeTab===key?'#f5e6d3':'rgba(245,230,211,0.42)',fontFamily:'inherit',fontSize:10,fontWeight:activeTab===key?700:400,cursor:'pointer',position:'relative'}}>
+              {label}
+              {key==='todos'&&openTodos.length>0&&<span style={{position:'absolute',top:2,right:3,background:'#6495ed',color:'#fff',borderRadius:8,fontSize:8,padding:'1px 3px',fontWeight:700}}>{openTodos.length}</span>}
+              {key==='calendar'&&todayAppts.length>0&&<span style={{position:'absolute',top:2,right:3,background:'#5cb87a',color:'#fff',borderRadius:8,fontSize:8,padding:'1px 3px',fontWeight:700}}>{todayAppts.length}</span>}
+              {key==='deals'&&pendingDeals.length>0&&<span style={{position:'absolute',top:2,right:3,background:'#9b5adc',color:'#fff',borderRadius:8,fontSize:8,padding:'1px 3px',fontWeight:700}}>{pendingDeals.length}</span>}
+            </button>
+          ))}
+        </div>
 
-        // Upcoming pickups this week
-        const upcomingPickups = activeOrders
-          .filter(o=>o.pickupDate && o.pickupDate>=todayStr && o.pickupDate<=in7days && !o.pickedUp)
-          .sort((a,b)=>a.pickupDate.localeCompare(b.pickupDate));
+        {/* TODAY */}
+        {activeTab==='today'&&(
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:11}}>
+              <p style={{margin:0,fontSize:12,color:'rgba(245,230,211,0.42)'}}>{todayChores.filter(c=>c.done).length} / {todayChores.length} done</p>
+              <button onClick={()=>{setEditingChore(null);setChoreForm({title:'',icon:'other',assigned_to:'Everyone',repeat_type:'daily',days:[]});setShowModal('chore');}} style={addBtn}>+ Add Chore</button>
+            </div>
+            {todayChores.length===0&&<Empty text="No chores today 🎉"/>}
+            {todayChores.map(c=><ChoreCard key={c.id} chore={c} onToggle={toggleDone} onEdit={()=>{setEditingChore(c);setChoreForm({title:c.title,icon:c.icon,assigned_to:c.assigned_to,repeat_type:c.repeat_type,days:c.days||[]});setShowModal('chore');}} onDelete={()=>deleteChore(c.id)}/>)}
+          </div>
+        )}
 
-        // Overdue pickups
-        const overduePickups = activeOrders
-          .filter(o=>o.pickupDate && o.pickupDate<todayStr && !o.pickedUp)
-          .sort((a,b)=>a.pickupDate.localeCompare(b.pickupDate));
+        {/* ALL CHORES */}
+        {activeTab==='all'&&(
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:11}}>
+              <select value={filter} onChange={e=>setFilter(e.target.value)} style={{...iStyle,marginBottom:0,width:'auto',fontSize:11,padding:'6px 9px'}}>
+                <option value="all">Everyone</option>
+                {FAMILY.map(n=><option key={n} value={n}>{n}</option>)}
+              </select>
+              <button onClick={()=>{setEditingChore(null);setChoreForm({title:'',icon:'other',assigned_to:'Everyone',repeat_type:'daily',days:[]});setShowModal('chore');}} style={addBtn}>+ Add Chore</button>
+            </div>
+            {allChores.length===0&&<Empty text="No chores yet"/>}
+            {allChores.map(c=><ChoreCard key={c.id} chore={c} onToggle={toggleDone} onEdit={()=>{setEditingChore(c);setChoreForm({title:c.title,icon:c.icon,assigned_to:c.assigned_to,repeat_type:c.repeat_type,days:c.days||[]});setShowModal('chore');}} onDelete={()=>deleteChore(c.id)} showSchedule/>)}
+          </div>
+        )}
 
-        // Items by status
-        const allItems = activeOrders.flatMap(o=>o.lineItems||[]);
-        const statusCounts = STATUSES.map(s=>({
-          ...s, count: allItems.filter(li=>li.status===s.key).length
-        })).filter(s=>s.count>0).sort((a,b)=>b.count-a.count);
-
-        // Payment due this week
-        const paymentsDue = activeOrders
-          .filter(o=>o.depositDueDate && o.depositDueDate>=todayStr && o.depositDueDate<=in7days)
-          .sort((a,b)=>a.depositDueDate.localeCompare(b.depositDueDate));
-
-        return (
-          <div style={{ padding:"20px 24px 40px" }}>
-            <div style={{ fontFamily:"'Playfair Display',serif", color:"#c9a96e", fontSize:20, marginBottom:20 }}>🏠 Dashboard</div>
-
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))", gap:16 }}>
-
-              {/* Upcoming pickups */}
-              <div style={{ background:"#0a1520", border:"1px solid #4ade8022", borderRadius:12, padding:16 }}>
-                <div style={{ fontSize:11, color:"#4ade80", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>
-                  📦 Pickups This Week ({upcomingPickups.length})
-                </div>
-                {upcomingPickups.length===0 ? (
-                  <div style={{ color:"#334155", fontSize:13 }}>No pickups this week</div>
-                ) : upcomingPickups.map(o=>(
-                  <div key={o.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #c9a96e08" }}>
+        {/* LAUNDRY */}
+        {activeTab==='laundry'&&(
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:11}}>
+              <p style={{margin:0,fontSize:12,color:'rgba(245,230,211,0.42)'}}>Mon–Sat rotating</p>
+              <button onClick={()=>{setEditingLaundry(null);setLaundryForm({person:'',day:'Monday'});setShowModal('laundry');}} style={addBtn}>+ Add</button>
+            </div>
+            <div style={{display:'grid',gap:8}}>
+              {DAYS.filter(d=>d!=='Sunday').map(day=>{
+                const entry=laundry.find(l=>l.day===day);
+                const isToday=day===todayName;
+                return(
+                  <div key={day} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 15px',borderRadius:12,background:isToday?'rgba(220,120,60,0.18)':'rgba(255,255,255,0.05)',border:'1px solid '+(isToday?'rgba(220,120,60,0.38)':'rgba(245,230,211,0.09)')}}>
                     <div>
-                      <div style={{ fontSize:13, color:"#e2d5c0", fontWeight:600 }}>{o.customer}</div>
-                      <div style={{ fontSize:11, color:"#64748b" }}>{o.phone}</div>
+                      <div style={{fontSize:13,fontWeight:600,color:isToday?'#dc783c':'#f5e6d3'}}>{isToday?'👕 ':''}{day}{isToday?' · Today':''}</div>
+                      <div style={{fontSize:11,color:'rgba(245,230,211,0.48)',marginTop:2}}>{entry?entry.person:<em>Unassigned</em>}</div>
                     </div>
-                    <div style={{ textAlign:"right" }}>
-                      <div style={{ fontSize:12, color:"#4ade80", fontWeight:700 }}>{o.pickupDate}</div>
-                      <div style={{ fontSize:11, color: orderBalance(o)>0?"#fb7185":"#4ade80" }}>
-                        {orderBalance(o)>0?`Owes ${fmt(orderBalance(o))}`:"✓ Paid"}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {overduePickups.length>0 && (
-                  <>
-                    <div style={{ fontSize:10, color:"#fb7185", fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", margin:"12px 0 8px" }}>⚠ Overdue</div>
-                    {overduePickups.map(o=>(
-                      <div key={o.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 0", borderBottom:"1px solid #fb718508" }}>
-                        <div style={{ fontSize:13, color:"#fb7185", fontWeight:600 }}>{o.customer}</div>
-                        <div style={{ fontSize:11, color:"#fb7185" }}>{o.pickupDate}</div>
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-
-              {/* Items by status */}
-              <div style={{ background:"#0a1520", border:"1px solid #c9a96e18", borderRadius:12, padding:16 }}>
-                <div style={{ fontSize:11, color:"#c9a96e", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>
-                  🏷️ Items by Status ({allItems.length} total)
-                </div>
-                {statusCounts.length===0 ? (
-                  <div style={{ color:"#334155", fontSize:13 }}>No items yet</div>
-                ) : statusCounts.map(s=>(
-                  <div key={s.key} style={{ display:"flex", alignItems:"center", gap:10, padding:"6px 0", borderBottom:"1px solid #c9a96e08" }}>
-                    <div style={{ flex:1 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
-                        <span style={{ fontSize:12, color:s.color, fontWeight:600 }}>{s.label}</span>
-                        <span style={{ fontSize:12, color:"#e2d5c0", fontWeight:700 }}>{s.count}</span>
-                      </div>
-                      <div style={{ height:4, background:"#1e293b", borderRadius:4, overflow:"hidden" }}>
-                        <div style={{ height:"100%", background:s.color, borderRadius:4, width:`${Math.round((s.count/allItems.length)*100)}%`, transition:"width 0.3s" }} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Payments due this week */}
-              {paymentsDue.length>0 && (
-                <div style={{ background:"#0a1520", border:"1px solid #fb718522", borderRadius:12, padding:16 }}>
-                  <div style={{ fontSize:11, color:"#fb7185", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>
-                    💳 Payments Due This Week ({paymentsDue.length})
-                  </div>
-                  {paymentsDue.map(o=>(
-                    <div key={o.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid #fb718508" }}>
-                      <div>
-                        <div style={{ fontSize:13, color:"#e2d5c0", fontWeight:600 }}>{o.customer}</div>
-                        <div style={{ fontSize:11, color:"#64748b" }}>{o.phone}</div>
-                      </div>
-                      <div style={{ textAlign:"right" }}>
-                        <div style={{ fontSize:12, color:"#fb7185", fontWeight:700 }}>{o.depositDueDate}</div>
-                        <div style={{ fontSize:11, color:"#fb7185" }}>{fmt(orderBalance(o))} owed</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-            </div>
-          </div>
-        );
-      })()}
-
-      {activeTab==="financials"&&pinUnlocked&&(
-        <div style={{ padding:24 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-            <div style={{ fontFamily:"'Playfair Display',serif", color:"#c9a96e", fontSize:18 }}>Financial Summary — Active Orders</div>
-            <button onClick={()=>{ setPinUnlocked(false); setActiveTab("active"); }} style={{ ...AB("#fb7185"), fontSize:11 }}>🔒 Lock</button>
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:12 }}>
-            {[
-              { label:"Subtotal",     val:fmt(totals.subtotal),       col:"#818cf8" },
-              { label:"Discounts",    val:`-${fmt(totals.discount)}`, col:"#a78bfa" },
-              { label:"Tax (9.75%)",  val:fmt(totals.tax),            col:"#f59e0b" },
-              { label:"Total w/ Tax", val:fmt(totals.value),          col:"#e2d5c0" },
-              { label:"Received",     val:fmt(totals.paid),           col:"#4ade80" },
-              { label:"Balance Owed", val:fmt(totals.owed),           col:"#fb7185" },
-            ].map(s=>(
-              <div key={s.label} style={{ background:"#0a1520", border:"1px solid #c9a96e18", borderRadius:12, padding:16 }}>
-                <div style={{ fontSize:10, color:"#64748b", textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6 }}>{s.label}</div>
-                <div style={{ fontSize:24, fontWeight:800, color:s.col, fontFamily:"'Playfair Display',serif" }}>{s.val}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Orders list */}
-      {activeTab==="calendar"&&(()=>{
-        const monthNames=["January","February","March","April","May","June","July","August","September","October","November","December"];
-        const firstDay=new Date(calYear,calMonth,1).getDay();
-        const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
-        const daysInPrev=new Date(calYear,calMonth,0).getDate();
-        const totalCells=Math.ceil((firstDay+daysInMonth)/7)*7;
-        const today=new Date();
-        const todayStr=`${calYear}-${String(calMonth+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
-
-        const getEventsForDate=(dateStr)=>{
-          const evts=[];
-          activeOrders.forEach(o=>{
-            if(o.pickupDate===dateStr) evts.push({ type:"pickup", label:`Pickup: ${o.customer}`, color:"#4ade80" });
-            if(o.depositDueDate===dateStr) evts.push({ type:"due", label:`Payment Due: ${o.customer}`, color:"#fb7185" });
-          });
-          appointments.filter(a=>a.date===dateStr).forEach(a=>evts.push({ type:"appt", label:a.label, color:"#818cf8" }));
-          return evts;
-        };
-
-        const upcoming=[...activeOrders.filter(o=>o.pickupDate).map(o=>({ date:o.pickupDate, label:`Pickup: ${o.customer}`, color:"#4ade80" })),
-          ...activeOrders.filter(o=>o.depositDueDate).map(o=>({ date:o.depositDueDate, label:`Payment Due: ${o.customer}`, color:"#fb7185" })),
-          ...appointments.map(a=>({ date:a.date, label:a.label, color:"#818cf8", apptId:a.id }))
-        ].filter(e=>e.date>=todayStr).sort((a,b)=>a.date.localeCompare(b.date)).slice(0,10);
-
-        return (
-          <div style={{ padding:"20px 24px 40px" }}>
-            {/* Legend */}
-            <div style={{ display:"flex", gap:14, flexWrap:"wrap", marginBottom:16 }}>
-              {[["#4ade80","Pickup"],["#fb7185","Payment Due"],["#818cf8","Appointment"]].map(([c,l])=>(
-                <div key={l} style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, color:"#94a3b8" }}>
-                  <div style={{ width:10, height:10, borderRadius:3, background:c+"33", border:`1px solid ${c}55` }}></div>{l}
-                </div>
-              ))}
-            </div>
-
-            {/* Calendar header */}
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-              <div style={{ fontFamily:"'Playfair Display',serif", color:"#c9a96e", fontSize:18 }}>✦ Calendar</div>
-              <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                <button onClick={()=>{ if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1); }}
-                  style={{ background:"#0a1520", border:"1px solid #c9a96e33", color:"#c9a96e", borderRadius:6, padding:"4px 12px", cursor:"pointer", fontSize:14 }}>‹</button>
-                <span style={{ fontSize:14, color:"#e2d5c0", fontWeight:700, minWidth:140, textAlign:"center" }}>{monthNames[calMonth]} {calYear}</span>
-                <button onClick={()=>{ if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1); }}
-                  style={{ background:"#0a1520", border:"1px solid #c9a96e33", color:"#c9a96e", borderRadius:6, padding:"4px 12px", cursor:"pointer", fontSize:14 }}>›</button>
-              </div>
-            </div>
-
-            {/* Day labels */}
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:4, marginBottom:4 }}>
-              {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=>(
-                <div key={d} style={{ textAlign:"center", fontSize:10, color:"#64748b", fontWeight:700, letterSpacing:"0.08em", textTransform:"uppercase", padding:"4px 0" }}>{d}</div>
-              ))}
-            </div>
-
-            {/* Calendar grid */}
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:4, marginBottom:20 }}>
-              {Array.from({length:totalCells},(_,i)=>{
-                let day, month=calMonth, year=calYear, isOther=false;
-                if(i<firstDay){ day=daysInPrev-(firstDay-i-1); month=calMonth-1; isOther=true; if(month<0){month=11;year=calYear-1;} }
-                else if(i>=firstDay+daysInMonth){ day=i-firstDay-daysInMonth+1; month=calMonth+1; isOther=true; if(month>11){month=0;year=calYear+1;} }
-                else { day=i-firstDay+1; }
-                const dateStr=`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
-                const isToday=dateStr===todayStr;
-                const evts=isOther?[]:getEventsForDate(dateStr);
-                return (
-                  <div key={i} onClick={()=>!isOther&&setShowApptForm(dateStr)}
-                    style={{ background:"#0a1520", border:`1px solid ${isToday?"#c9a96e66":"#c9a96e11"}`, borderRadius:8, minHeight:72, padding:6, opacity:isOther?0.3:1, cursor:isOther?"default":"pointer", transition:"border-color 0.15s" }}>
-                    <div style={{ fontSize:11, color:isToday?"#c9a96e":"#64748b", fontWeight:isToday?800:600, marginBottom:4 }}>{day}</div>
-                    {evts.slice(0,3).map((e,ei)=>(
-                      <div key={ei} style={{ fontSize:9, fontWeight:700, borderRadius:4, padding:"2px 5px", marginBottom:2, background:e.color+"22", color:e.color, border:`1px solid ${e.color}33`, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{e.label}</div>
-                    ))}
-                    {evts.length>3&&<div style={{ fontSize:9, color:"#64748b" }}>+{evts.length-3} more</div>}
+                    {entry&&<div style={{display:'flex',gap:6}}>
+                      <button onClick={()=>{setEditingLaundry(entry);setLaundryForm({person:entry.person,day:entry.day});setShowModal('laundry');}} style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(245,230,211,0.14)',color:'rgba(245,230,211,0.55)',borderRadius:7,padding:'4px 9px',fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>Edit</button>
+                      <button onClick={()=>deleteLaundry(entry.id)} style={iconBtn}>🗑️</button>
+                    </div>}
                   </div>
                 );
               })}
             </div>
-
-            {/* Upcoming */}
-            <div style={{ background:"#0a1520", border:"1px solid #c9a96e18", borderRadius:10, padding:16, marginBottom:16 }}>
-              <div style={{ fontSize:11, color:"#c9a96e", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>Coming Up</div>
-              {upcoming.length===0?(
-                <div style={{ color:"#334155", fontSize:13 }}>No upcoming events</div>
-              ):upcoming.map((e,i)=>(
-                <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:i<upcoming.length-1?"1px solid #c9a96e08":"none" }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                    <div style={{ width:8, height:8, borderRadius:"50%", background:e.color, flexShrink:0 }}></div>
-                    <span style={{ fontSize:13, color:"#e2d5c0" }}>{e.label}</span>
-                  </div>
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <span style={{ fontSize:11, color:"#64748b" }}>{e.date}</span>
-                    {e.apptId&&<button onClick={()=>deleteAppointment(e.apptId)} style={{ background:"#fb718518", border:"1px solid #fb718533", color:"#fb7185", borderRadius:4, padding:"2px 6px", fontSize:10, cursor:"pointer" }}>✕</button>}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Add appointment button */}
-            <button onClick={()=>setShowApptForm(todayStr)} style={{ background:"none", border:"1px dashed #818cf855", color:"#818cf8", borderRadius:8, padding:"10px 20px", cursor:"pointer", fontSize:12, fontWeight:700, width:"100%" }}>
-              + Add Appointment / Note
-            </button>
-
-            {/* Appointment form modal */}
-            {showApptForm&&(
-              <div style={{ position:"fixed", inset:0, background:"#000000cc", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }} onClick={()=>setShowApptForm(null)}>
-                <div style={{ background:"#0f1923", border:"1px solid #818cf833", borderRadius:16, padding:28, maxWidth:400, width:"100%" }} onClick={e=>e.stopPropagation()}>
-                  <div style={{ fontFamily:"'Playfair Display',serif", color:"#818cf8", fontSize:18, marginBottom:16 }}>Add Appointment</div>
-                  <ApptForm date={showApptForm} onSave={(appt)=>{ saveAppointment(appt); setShowApptForm(null); }} onClose={()=>setShowApptForm(null)} />
-                </div>
-              </div>
-            )}
           </div>
-        );
-      })()}
+        )}
 
-      {activeTab==="activity"&&(
-        <div style={{ padding:"20px 24px 40px" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-            <div style={{ fontFamily:"'Playfair Display',serif", color:"#c9a96e", fontSize:20 }}>🕐 Activity Log</div>
-            {activityLog.length>0&&<button onClick={()=>setActivityLog([])} style={{ background:"none", border:"1px solid #334155", color:"#64748b", borderRadius:6, padding:"4px 12px", fontSize:11, cursor:"pointer" }}>Clear</button>}
-          </div>
-          {activityLog.length===0?(
-            <div style={{ textAlign:"center", padding:60, color:"#334155" }}>
-              <div style={{ fontSize:40, marginBottom:12 }}>🕐</div>
-              <div style={{ fontSize:14 }}>No activity yet — changes will appear here</div>
-              <div style={{ fontSize:12, color:"#1e293b", marginTop:6 }}>Adding, editing, or filing orders will be tracked</div>
-            </div>
-          ):(
-            <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-              {activityLog.map((entry,i)=>(
-                <div key={entry.id} style={{ background:"#0a1520", border:"1px solid #c9a96e11", borderRadius:10, padding:"12px 16px", display:"flex", alignItems:"center", gap:14 }}>
-                  <div style={{ fontSize:20, width:32, textAlign:"center", flexShrink:0 }}>{entry.icon}</div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:13, color:"#e2d5c0", fontWeight:600 }}>{entry.action}</div>
-                    {entry.customer&&<div style={{ fontSize:12, color:"#c9a96e", marginTop:2 }}>{entry.customer}</div>}
-                  </div>
-                  <div style={{ textAlign:"right", flexShrink:0 }}>
-                    <div style={{ fontSize:12, color:"#64748b" }}>{entry.time}</div>
-                    <div style={{ fontSize:11, color:"#334155" }}>{entry.date}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab!=="financials"&&activeTab!=="calendar"&&activeTab!=="dashboard"&&activeTab!=="activity"&&(
-        <>
-          <div style={{ padding:"14px 24px", display:"flex", gap:8, flexWrap:"wrap", alignItems:"center" }}>
-            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍  Search name, phone, PO#, school, referral…"
-              style={{ flex:1, minWidth:220, background:"#0a1520", border:"1px solid #c9a96e33", borderRadius:8, color:"#e2d5c0", padding:"8px 14px", fontSize:13, outline:"none" }} />
-            <select value={filterOccasion} onChange={e=>setFilterOcc(e.target.value)}
-              style={{ background:"#0a1520", border:"1px solid #c9a96e33", borderRadius:8, color:"#e2d5c0", padding:"8px 12px", fontSize:12, outline:"none" }}>
-              <option value="all">All Occasions</option>
-              {OCCASIONS.map(o=><option key={o}>{o}</option>)}
-            </select>
-            {[{key:"all",label:"All"},...STATUSES].map(s=>(
-              <button key={s.key} onClick={()=>setFilterStatus(s.key)} style={{ padding:"5px 12px", borderRadius:20, fontSize:10, fontWeight:700, letterSpacing:"0.06em", textTransform:"uppercase", cursor:"pointer",
-                border:filterStatus===s.key?"1px solid #c9a96e":"1px solid #334155", background:filterStatus===s.key?"#c9a96e22":"transparent", color:filterStatus===s.key?"#c9a96e":"#64748b" }}>
-                {s.label||"All"}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ padding:"0 24px 40px", display:"flex", flexDirection:"column", gap:10 }}>
-            {loading?(
-              <div style={{ textAlign:"center", padding:60, color:"#64748b" }}>
-                <div style={{ fontSize:30, marginBottom:12 }}>✦</div>
-                <div>Loading orders…</div>
+        {/* TO-DO */}
+        {activeTab==='todos'&&(
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:11}}>
+              <div style={{display:'flex',gap:5}}>
+                {['open','done'].map(f=>(
+                  <button key={f} onClick={()=>setTodoFilter(f)} style={{padding:'5px 12px',borderRadius:18,border:'1px solid',borderColor:todoFilter===f?'#6495ed':'rgba(245,230,211,0.2)',background:todoFilter===f?'rgba(100,149,237,0.2)':'transparent',color:todoFilter===f?'#6495ed':'rgba(245,230,211,0.5)',fontSize:11,cursor:'pointer',fontFamily:'inherit',fontWeight:todoFilter===f?700:400}}>
+                    {f==='open'?'Open ('+openTodos.length+')':'Done'}
+                  </button>
+                ))}
               </div>
-            ):filtered.length===0?(
-              <div style={{ textAlign:"center", padding:60, color:"#334155" }}>
-                <div style={{ fontSize:40, marginBottom:12 }}>✦</div>
-                <div style={{ fontSize:14 }}>{activeTab==="archived"?"No past customers yet":"No orders found"}</div>
-              </div>
-            ):filtered.map(o=>{
-              const subtotal=orderSubtotal(o),tax=orderTax(o),total=orderTotal(o),paid=totalPaid(o),balance=orderBalance(o),discount=orderDiscount(o);
-              const allPickedUp=(o.lineItems||[]).length>0&&(o.lineItems||[]).every(li=>li.pickedUp);
-              return (
-                <div key={o.id} style={{ background:"#0a1520", border:`1px solid ${o.archived?"#4ade8022":"#c9a96e18"}`, borderRadius:14, overflow:"hidden", cursor:"pointer" }} onClick={()=>setViewOrder(o)}>
-                  <div style={{ display:"flex", flexWrap:"wrap", alignItems:"center", justifyContent:"space-between", gap:10, padding:"14px 18px", borderBottom:"1px solid #c9a96e11" }}>
-                    <div>
-                      <div style={{ fontWeight:700, color:"#e2d5c0", fontSize:15, display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-                        {o.customer}
-                        {o.customer2&&<span style={{ fontSize:12, color:"#94a3b8", fontWeight:400 }}>/ {o.customer2}</span>}
-                        {o.pickedUp&&<span style={{ fontSize:10, background:"#4ade8022", color:"#4ade80", border:"1px solid #4ade8033", borderRadius:20, padding:"1px 8px", fontWeight:700 }}>✓ Picked Up</span>}
-                        {allPickedUp&&!o.pickedUp&&<span style={{ fontSize:10, background:"#f59e0b22", color:"#f59e0b", border:"1px solid #f59e0b33", borderRadius:20, padding:"1px 8px", fontWeight:700 }}>All Items Ready</span>}
-                      </div>
-                      <div style={{ fontSize:11, color:"#64748b", marginTop:2, display:"flex", flexWrap:"wrap", gap:8 }}>
-                        {o.phone&&<span>{o.phone}</span>}
-                        {o.date&&<span>{o.date}</span>}
-                        {o.schoolName&&<span style={{ color:"#818cf8" }}>🏫 {o.schoolName}</span>}
-                        {o.poNumber&&<span style={{ color:"#f59e0b" }}>PO# {o.poNumber}</span>}
-                        {o.pickupDate&&<span style={{ color:"#2dd4bf" }}>📅 Pickup: {o.pickupDate}</span>}
-                        {o.depositDueDate&&<span style={{ color:"#fb7185" }}>💳 Due: {o.depositDueDate}</span>}
-                        {discount>0&&<span style={{ color:"#a78bfa" }}>-{fmt(discount)} off</span>}
-                      </div>
+              <button onClick={()=>{setEditingTodo(null);setTodoForm({title:'',notes:'',priority:'normal',assigned_to:'Anyone'});setShowModal('todo');}} style={{...addBtn,borderColor:'rgba(100,149,237,0.4)',color:'#a8c4f5'}}>+ Add</button>
+            </div>
+            {filteredTodos.length===0&&<Empty text={todoFilter==='open'?'Nothing to do 🎉':'No completed items'}/>}
+            {filteredTodos.map(todo=>{
+              const pc=PRIORITY_COLORS[todo.priority]||'#dc9a3c';
+              return(
+                <div key={todo.id} style={{display:'flex',alignItems:'flex-start',gap:10,padding:'13px 14px',borderRadius:12,marginBottom:8,background:todo.done?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.065)',border:'1px solid '+(todo.done?'rgba(245,230,211,0.06)':pc+'35')}}>
+                  <button onClick={()=>toggleTodo(todo)} style={{width:27,height:27,borderRadius:'50%',border:'2px solid',borderColor:todo.done?'#5cb87a':pc,background:todo.done?'rgba(92,184,122,0.2)':'transparent',fontSize:12,cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',color:'#5cb87a',marginTop:1}}>{todo.done?'✓':''}</button>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:'flex',alignItems:'center',gap:7,flexWrap:'wrap'}}>
+                      <span style={{fontSize:13,fontWeight:600,color:todo.done?'rgba(245,230,211,0.28)':'#f5e6d3',textDecoration:todo.done?'line-through':'none'}}>{todo.title}</span>
+                      {!todo.done&&<span style={{fontSize:9,background:pc+'22',color:pc,border:'1px solid '+pc+'55',borderRadius:6,padding:'2px 6px'}}>{todo.priority}</span>}
                     </div>
-                    <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-                      {o.occasion&&<OccasionBadge occasion={o.occasion} />}
-                      <PayBadge type={o.paymentType} />
-                      <div style={{ textAlign:"right" }}>
-                        <div style={{ fontSize:11, color:"#64748b" }}>{fmt(subtotal)} + {fmt(tax)} tax = <span style={{ color:"#c9a96e" }}>{fmt(total)}</span></div>
-                        <div style={{ fontSize:11, color:"#64748b" }}>{fmt(paid)} paid ({(o.payments||[]).length})</div>
-                        <div style={{ fontWeight:800, fontSize:14, color:balance>0?"#fb7185":"#4ade80" }}>{balance>0?`Owes ${fmt(balance)}`:"✓ Paid in Full"}</div>
-                      </div>
-                      <div style={{ display:"flex", gap:6 }} onClick={e=>e.stopPropagation()}>
-                        {!o.archived&&<button onClick={()=>setEditOrder(o)} style={AB("#818cf8")}>Edit</button>}
-                        {o.archived&&<button onClick={()=>unarchive(o.id)} style={AB("#4ade80")}>Restore</button>}
-                        <button onClick={()=>setDeleteConfirm(o)} style={AB("#fb7185")}>Del</button>
-                      </div>
-                    </div>
+                    {todo.notes&&<div style={{fontSize:11,color:'rgba(245,230,211,0.4)',marginTop:3,fontStyle:'italic'}}>{todo.notes}</div>}
+                    <div style={{fontSize:11,color:'rgba(245,230,211,0.35)',marginTop:3}}>{todo.assigned_to!=='Anyone'?'→ '+todo.assigned_to:'Anyone'}{todo.done&&todo.done_by?' · Done by '+todo.done_by:''}</div>
                   </div>
-                  {(o.lineItems||[]).map((li,idx)=>{
-                    const sc=STATUSES.find(s=>s.key===li.status)?.color||"#94a3b8";
-                    return (
-                      <div key={li.id} style={{ display:"flex", flexWrap:"wrap", alignItems:"flex-start", gap:8, padding:"10px 18px", borderTop:idx>0?"1px solid #c9a96e08":"none", borderLeft:`3px solid ${sc}`, background:idx%2===1?"#ffffff03":"transparent" }}>
-                        <div style={{ flex:"1 1 180px" }}>
-                          <span style={{ fontWeight:600, color:"#c9a96e", fontSize:13 }}>{li.item||"—"}</span>
-                          {(li.size||li.color)&&<span style={{ color:"#64748b", fontSize:11 }}> · {[li.size,li.color].filter(Boolean).join(" / ")}</span>}
-                          {li.pickedUp&&<span style={{ marginLeft:8, fontSize:10, color:"#4ade80" }}>✓ picked up</span>}
-                        </div>
-                        <div style={{ display:"flex", flexWrap:"wrap", alignItems:"center", gap:8, flex:"2 1 300px" }}>
-                          <span style={{ fontSize:12, color:"#94a3b8" }}>x{li.qty} · {fmt((parseFloat(li.price)||0)*(parseInt(li.qty)||1))}</span>
-                          <StatusBadge statusKey={li.status} />
-                          {li.eta&&<span style={{ fontSize:11, color:sc, background:sc+"18", border:`1px solid ${sc}33`, borderRadius:20, padding:"2px 8px" }}>📅 {li.eta}</span>}
-                          {li.note&&<span style={{ fontSize:11, color:"#94a3b8", fontStyle:"italic", background:"#ffffff08", borderRadius:6, padding:"3px 9px" }}>💬 {li.note}</span>}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <div style={{display:'flex',gap:3}}>
+                    {!todo.done&&<button onClick={()=>{setEditingTodo(todo);setTodoForm({title:todo.title,notes:todo.notes||'',priority:todo.priority,assigned_to:todo.assigned_to});setShowModal('todo');}} style={iconBtn}>✏️</button>}
+                    <button onClick={()=>deleteTodo(todo.id)} style={iconBtn}>🗑️</button>
+                  </div>
                 </div>
               );
             })}
           </div>
-        </>
-      )}
+        )}
 
-      {/* Modals */}
-      {showPin&&<PinModal onSuccess={()=>{ setPinUnlocked(true); setShowPin(false); setActiveTab("financials"); }} onClose={()=>setShowPin(false)} />}
-      {showAdd&&<Modal title="New Order" onClose={()=>setShowAdd(false)} wide><OrderForm onSave={saveNew} onCancel={()=>setShowAdd(false)} /></Modal>}
-      {editOrder&&<Modal title="Edit Order" onClose={()=>setEditOrder(null)} wide><OrderForm initial={editOrder} onSave={saveEdit} onCancel={()=>setEditOrder(null)} /></Modal>}
 
-      {viewOrder&&(()=>{
-        const o=orders.find(x=>x.id===viewOrder.id)||viewOrder;
-        const items=o.lineItems||[],pmts=o.payments||[];
-        const subtotal=orderSubtotal(o),discount=orderDiscount(o),afterDisc=orderAfterDisc(o),tax=orderTax(o),total=orderTotal(o),paid=totalPaid(o),balance=orderBalance(o);
-        return (
-          <Modal title="Order Details" onClose={()=>setViewOrder(null)} wide>
-            <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
-                <DR label="Primary Name" val={o.customer} hi />
-                {o.customer2&&<DR label="2nd Name" val={o.customer2} />}
-                <DR label="Phone" val={o.phone} />
-                <DR label="Order Date" val={o.date} />
-                {o.pickupDate&&<DR label="Pickup Date" val={o.pickupDate} />}
-                {o.depositDueDate&&<DR label="Next Payment Due" val={o.depositDueDate} />}
-                {o.schoolName&&<DR label="School" val={o.schoolName} />}
-                {o.poNumber&&<DR label="PO #" val={o.poNumber} />}
-                {o.referredBy&&<DR label="Referred By" val={o.referredBy} />}
+
+        {/* FLYLADY */}
+        {activeTab==='flylady'&&(()=>{
+          const currentZone = getCurrentZone(zones);
+          const todayDay = DAYS[new Date().getDay()];
+          const isBlessing = todayDay==='Monday';
+          const blessingTotal = WEEKLY_BLESSING.length;
+          const blessingDoneCount = Object.values(blessingDone).filter(Boolean).length;
+          const zoneTasksDone = Object.keys(flyTasksDone).filter(k=>k.startsWith('z'+currentZone.id+'_')&&flyTasksDone[k]).length;
+          return(
+            <div>
+              {/* What is FlyLady banner */}
+              <div style={{background:'linear-gradient(135deg,rgba(255,182,193,0.15),rgba(220,120,60,0.1))',border:'1px solid rgba(255,182,193,0.3)',borderRadius:13,padding:'12px 14px',marginBottom:14}}>
+                <div style={{fontSize:14,fontWeight:700,color:'#f5b8c8',marginBottom:4}}>🧹 What is FlyLady?</div>
+                <div style={{fontSize:11,color:'rgba(245,230,211,0.65)',lineHeight:1.6}}>FlyLady is a home management system built around <strong style={{color:'#f5b8c8'}}>small daily habits</strong> instead of marathon cleaning. The house is divided into 5 zones — you focus on one zone per week. Each day has a quick morning & evening routine. The goal: <em>progress over perfection</em>. You can do anything for 15 minutes! 🏠✨</div>
               </div>
-              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                {o.occasion&&<OccasionBadge occasion={o.occasion} />}
-                <PayBadge type={o.paymentType} />
-                {o.pickedUp&&<span style={{ fontSize:11, background:"#4ade8022", color:"#4ade80", border:"1px solid #4ade8033", borderRadius:20, padding:"2px 10px", fontWeight:700 }}>✓ Fully Picked Up</span>}
+
+              {/* Sub-nav */}
+              <div style={{display:'flex',gap:4,marginBottom:14,overflowX:'auto',paddingBottom:2}}>
+                {[['today',"Today's Focus"],['zones','Zones'],['routines','Routines'],['blessing','Weekly Blessing'],['babysteps','Baby Steps']].map(([v,label])=>(
+                  <button key={v} onClick={()=>setFlySection(v)} style={{padding:'6px 11px',borderRadius:18,border:'1px solid',borderColor:flySection===v?'#f5b8c8':'rgba(245,230,211,0.2)',background:flySection===v?'rgba(255,182,193,0.2)':'transparent',color:flySection===v?'#f5b8c8':'rgba(245,230,211,0.5)',fontSize:10,cursor:'pointer',fontFamily:'inherit',fontWeight:flySection===v?700:400,whiteSpace:'nowrap'}}>{label}</button>
+                ))}
               </div>
-              <div>
-                <div style={{ fontSize:11, color:"#c9a96e", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>Items ({items.length})</div>
-                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                  {items.map(li=>{
-                    const sc=STATUSES.find(s=>s.key===li.status)?.color||"#94a3b8";
-                    return (
-                      <div key={li.id} style={{ background:"#070d14", border:`1px solid ${sc}22`, borderLeft:`3px solid ${sc}`, borderRadius:8, padding:12 }}>
-                        <div style={{ display:"flex", flexWrap:"wrap", alignItems:"center", gap:8 }}>
-                          <span style={{ fontWeight:700, color:"#c9a96e" }}>{li.item}</span>
-                          {(li.size||li.color)&&<span style={{ fontSize:12, color:"#64748b" }}>{li.size} · {li.color}</span>}
-                          <span style={{ fontSize:12, color:"#94a3b8" }}>x{li.qty} · {fmt((parseFloat(li.price)||0)*(parseInt(li.qty)||1))}</span>
-                          <StatusBadge statusKey={li.status} />
-                          {li.eta&&<span style={{ fontSize:11, color:sc }}>ETA {li.eta}</span>}
-                          {li.pickedUp&&<span style={{ fontSize:10, background:"#4ade8022", color:"#4ade80", border:"1px solid #4ade8033", borderRadius:20, padding:"1px 8px" }}>✓ Picked Up</span>}
+
+              {/* TODAY'S FOCUS */}
+              {flySection==='today'&&(
+                <div>
+                  {/* Current Zone Card */}
+                  <div style={{background:'rgba(255,255,255,0.06)',border:'2px solid '+currentZone.color+'55',borderRadius:14,padding:'14px 16px',marginBottom:14}}>
+                    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                      <span style={{fontSize:26}}>{currentZone.icon}</span>
+                      <div>
+                        <div style={{fontSize:11,color:'rgba(245,230,211,0.45)',textTransform:'uppercase',letterSpacing:'0.08em'}}>This Week's Zone</div>
+                        <div style={{fontSize:14,fontWeight:700,color:currentZone.color}}>{currentZone.name}</div>
+                        <div style={{fontSize:10,color:'rgba(245,230,211,0.4)',marginTop:2}}>{zoneTasksDone} / {currentZone.tasks.length} tasks done this week</div>
+                      </div>
+                    </div>
+                    <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                      {currentZone.tasks.map((task,i)=>{
+                        const key='z'+currentZone.id+'_'+i;
+                        const done=flyTasksDone[key];
+                        return(
+                          <div key={i} onClick={()=>setFlyTasksDone(prev=>({...prev,[key]:!done}))} style={{display:'flex',alignItems:'center',gap:9,padding:'8px 10px',borderRadius:9,background:done?'rgba(92,184,122,0.12)':'rgba(255,255,255,0.04)',border:'1px solid '+(done?'rgba(92,184,122,0.3)':'rgba(245,230,211,0.08)'),cursor:'pointer'}}>
+                            <div style={{width:20,height:20,borderRadius:'50%',border:'2px solid',borderColor:done?'#5cb87a':currentZone.color+'80',background:done?'rgba(92,184,122,0.3)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,color:'#5cb87a',flexShrink:0}}>{done?'✓':''}</div>
+                            <span style={{fontSize:12,color:done?'rgba(245,230,211,0.35)':'#f5e6d3',textDecoration:done?'line-through':'none'}}>{task}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Weekly Blessing reminder on Monday */}
+                  {isBlessing&&(
+                    <div style={{background:'rgba(100,149,237,0.12)',border:'1px solid rgba(100,149,237,0.35)',borderRadius:12,padding:'10px 14px',marginBottom:14}}>
+                      <div style={{fontSize:12,fontWeight:700,color:'#6495ed',marginBottom:4}}>🙏 It's Monday — Weekly Home Blessing Day!</div>
+                      <div style={{fontSize:11,color:'rgba(245,230,211,0.55)'}}>{blessingDoneCount}/{blessingTotal} tasks done · Tap "Weekly Blessing" above to track</div>
+                    </div>
+                  )}
+
+                  {/* 15-min mission tip */}
+                  <div style={{background:'rgba(255,182,193,0.08)',border:'1px solid rgba(255,182,193,0.2)',borderRadius:12,padding:'10px 14px',marginBottom:14}}>
+                    <div style={{fontSize:11,fontWeight:700,color:'#f5b8c8',marginBottom:3}}>⏱️ Your 15-Minute Mission</div>
+                    <div style={{fontSize:11,color:'rgba(245,230,211,0.6)'}}>Pick ONE task from the zone above. Set a timer for 15 minutes. Work until the timer goes off — then stop. You can do anything for 15 minutes!</div>
+                  </div>
+
+                  {/* Quick morning check */}
+                  <div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'12px 14px'}}>
+                    <div style={{fontSize:12,fontWeight:700,color:'#f5e6d3',marginBottom:8}}>☀️ Morning Routine Quick Check</div>
+                    {MORNING_ROUTINE.slice(0,4).map((task,i)=>{
+                      const key='mq_'+i;
+                      const done=routineDone.morning[key];
+                      return(
+                        <div key={i} onClick={()=>setRoutineDone(prev=>({...prev,morning:{...prev.morning,[key]:!done}}))} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 0',cursor:'pointer',borderBottom:i<3?'1px solid rgba(245,230,211,0.06)':'none'}}>
+                          <div style={{width:18,height:18,borderRadius:'50%',border:'2px solid',borderColor:done?'#5cb87a':'rgba(245,230,211,0.25)',background:done?'rgba(92,184,122,0.25)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:'#5cb87a',flexShrink:0}}>{done?'✓':''}</div>
+                          <span style={{fontSize:11,color:done?'rgba(245,230,211,0.35)':'rgba(245,230,211,0.75)',textDecoration:done?'line-through':'none'}}>{task}</span>
                         </div>
-                        {li.note&&<div style={{ marginTop:6, fontSize:12, color:"#94a3b8", fontStyle:"italic", background:"#ffffff06", borderRadius:6, padding:"6px 10px" }}>💬 {li.note}</div>}
+                      );
+                    })}
+                    <button onClick={()=>setFlySection('routines')} style={{marginTop:8,fontSize:10,color:'rgba(245,230,211,0.45)',background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',padding:0}}>See full routines →</button>
+                  </div>
+                </div>
+              )}
+
+              {/* ZONES */}
+              {flySection==='zones'&&(
+                <div>
+                  <div style={{fontSize:11,color:'rgba(245,230,211,0.5)',marginBottom:12,lineHeight:1.6}}>The house is split into 5 zones. You focus on one zone per week — Days 1–7 = Zone 1, Days 8–14 = Zone 2, and so on. Each zone gets a deep clean once a month this way.</div>
+                  <div style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}>
+                    <button onClick={()=>{setEditingZone(null);setZoneForm({name:'',icon:'🏠',color:'#dc783c',tasks:[]});setNewTask('');setShowModal('zone');}} style={{...addBtn,borderColor:'rgba(255,182,193,0.4)',color:'#f5b8c8'}}>+ Add Zone</button>
+                  </div>
+                  {zones.map((zone,zi)=>{
+                    const isCurrent = getCurrentZone(zones).id===zone.id;
+                    return(
+                      <div key={zone.id} style={{borderRadius:13,marginBottom:12,border:'2px solid '+(isCurrent?zone.color:'rgba(245,230,211,0.1)'),background:isCurrent?'rgba(255,255,255,0.07)':'rgba(255,255,255,0.04)',overflow:'hidden'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:10,padding:'12px 14px',background:isCurrent?(zone.color+'15'):'transparent'}}>
+                          <span style={{fontSize:22}}>{zone.icon}</span>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:13,fontWeight:700,color:isCurrent?zone.color:'#f5e6d3'}}>{zone.name}{isCurrent?' ← This Week':''}</div>
+                            <div style={{fontSize:10,color:'rgba(245,230,211,0.4)',marginTop:1}}>{zone.tasks.length} tasks</div>
+                          </div>
+                          <button onClick={()=>{setEditingZone(zone);setZoneForm({name:zone.name,icon:zone.icon,color:zone.color,tasks:[...zone.tasks]});setNewTask('');setShowModal('zone');}} style={iconBtn}>✏️</button>
+                          <button onClick={()=>setZones(zones.filter(z=>z.id!==zone.id))} style={iconBtn}>🗑️</button>
+                        </div>
+                        <div style={{padding:'0 14px 12px'}}>
+                          {zone.tasks.map((task,i)=>(
+                            <div key={i} style={{fontSize:11,color:'rgba(245,230,211,0.6)',padding:'4px 0',borderBottom:i<zone.tasks.length-1?'1px solid rgba(245,230,211,0.05)':'none'}}>• {task}</div>
+                          ))}
+                        </div>
                       </div>
                     );
                   })}
                 </div>
-              </div>
-              <div>
-                <div style={{ fontSize:11, color:"#4ade80", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:10 }}>Payments ({pmts.length})</div>
-                <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                  {pmts.map((p,i)=>(
-                    <div key={p.id||i} style={{ background:"#070d14", border:"1px solid #4ade8022", borderLeft:"3px solid #4ade80", borderRadius:8, padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
-                      <div>
-                        <span style={{ fontWeight:700, color:"#4ade80", fontSize:15, fontFamily:"'Playfair Display',serif" }}>{fmt(parseFloat(p.amount))}</span>
-                        {p.note&&<span style={{ fontSize:12, color:"#64748b", fontStyle:"italic", marginLeft:10 }}>— {p.note}</span>}
+              )}
+
+              {/* ROUTINES */}
+              {flySection==='routines'&&(
+                <div>
+                  <div style={{fontSize:11,color:'rgba(245,230,211,0.5)',marginBottom:14,lineHeight:1.6}}>Do these every single day. They take about 15–20 minutes total. Check them off as you go — they reset each time you visit.</div>
+                  <div style={{marginBottom:16}}>
+                    <div style={{fontSize:13,fontWeight:700,color:'#f5b8c8',marginBottom:10}}>☀️ Morning Routine</div>
+                    {MORNING_ROUTINE.map((task,i)=>{
+                      const key='m_'+i;
+                      const done=routineDone.morning[key];
+                      return(
+                        <div key={i} onClick={()=>setRoutineDone(prev=>({...prev,morning:{...prev.morning,[key]:!done}}))} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:9,marginBottom:5,background:done?'rgba(92,184,122,0.1)':'rgba(255,255,255,0.05)',border:'1px solid '+(done?'rgba(92,184,122,0.25)':'rgba(245,230,211,0.08)'),cursor:'pointer'}}>
+                          <div style={{width:22,height:22,borderRadius:'50%',border:'2px solid',borderColor:done?'#5cb87a':'rgba(255,182,193,0.4)',background:done?'rgba(92,184,122,0.25)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,color:'#5cb87a',flexShrink:0}}>{done?'✓':''}</div>
+                          <span style={{fontSize:12,color:done?'rgba(245,230,211,0.35)':'#f5e6d3',textDecoration:done?'line-through':'none',flex:1}}>{task}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:'#9370db',marginBottom:10}}>🌙 Evening Routine</div>
+                    {EVENING_ROUTINE.map((task,i)=>{
+                      const key='e_'+i;
+                      const done=routineDone.evening[key];
+                      return(
+                        <div key={i} onClick={()=>setRoutineDone(prev=>({...prev,evening:{...prev.evening,[key]:!done}}))} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:9,marginBottom:5,background:done?'rgba(92,184,122,0.1)':'rgba(255,255,255,0.05)',border:'1px solid '+(done?'rgba(92,184,122,0.25)':'rgba(245,230,211,0.08)'),cursor:'pointer'}}>
+                          <div style={{width:22,height:22,borderRadius:'50%',border:'2px solid',borderColor:done?'#5cb87a':'rgba(147,112,219,0.4)',background:done?'rgba(92,184,122,0.25)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,color:'#5cb87a',flexShrink:0}}>{done?'✓':''}</div>
+                          <span style={{fontSize:12,color:done?'rgba(245,230,211,0.35)':'#f5e6d3',textDecoration:done?'line-through':'none',flex:1}}>{task}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{marginTop:12,padding:'10px 14px',background:'rgba(255,182,193,0.08)',borderRadius:10,border:'1px solid rgba(255,182,193,0.2)'}}>
+                    <div style={{fontSize:11,color:'#f5b8c8',fontWeight:700,marginBottom:3}}>💡 FlyLady Tip</div>
+                    <div style={{fontSize:11,color:'rgba(245,230,211,0.55)'}}>Don't skip the sink! Shining your sink every night is the #1 anchor habit. When you wake up to a clean sink, you start the day with a win.</div>
+                  </div>
+                </div>
+              )}
+
+              {/* WEEKLY BLESSING */}
+              {flySection==='blessing'&&(
+                <div>
+                  <div style={{fontSize:11,color:'rgba(245,230,211,0.5)',marginBottom:12,lineHeight:1.6}}>Every Monday, bless your whole home with these 7 quick tasks. Don't clean — just bless. Set a timer for each one and move on when it goes off. Total time: about 1 hour.</div>
+                  <div style={{background:'rgba(100,149,237,0.1)',border:'1px solid rgba(100,149,237,0.3)',borderRadius:12,padding:'10px 14px',marginBottom:14}}>
+                    <div style={{fontSize:12,fontWeight:700,color:'#6495ed'}}>🙏 Weekly Home Blessing — {blessingDoneCount}/{blessingTotal} done</div>
+                    <div style={{height:4,background:'rgba(100,149,237,0.2)',borderRadius:2,marginTop:6}}><div style={{height:'100%',width:(blessingDoneCount/blessingTotal*100)+'%',background:'#6495ed',borderRadius:2,transition:'width 0.3s'}}/></div>
+                  </div>
+                  {WEEKLY_BLESSING.map((item,i)=>{
+                    const key='b_'+i;
+                    const done=blessingDone[key];
+                    return(
+                      <div key={i} onClick={()=>setBlessingDone(prev=>({...prev,[key]:!done}))} style={{display:'flex',alignItems:'center',gap:10,padding:'12px 14px',borderRadius:12,marginBottom:7,background:done?'rgba(92,184,122,0.1)':'rgba(255,255,255,0.06)',border:'1px solid '+(done?'rgba(92,184,122,0.3)':'rgba(245,230,211,0.1)'),cursor:'pointer'}}>
+                        <span style={{fontSize:20,flexShrink:0}}>{item.icon}</span>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:600,color:done?'rgba(245,230,211,0.35)':'#f5e6d3',textDecoration:done?'line-through':'none'}}>{item.task}</div>
+                          <div style={{fontSize:10,color:'rgba(245,230,211,0.4)',marginTop:2}}>⏱️ {item.time}</div>
+                        </div>
+                        <div style={{width:24,height:24,borderRadius:'50%',border:'2px solid',borderColor:done?'#5cb87a':'rgba(100,149,237,0.4)',background:done?'rgba(92,184,122,0.25)':'transparent',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,color:'#5cb87a',flexShrink:0}}>{done?'✓':''}</div>
                       </div>
-                      <span style={{ fontSize:11, color:"#64748b" }}>{p.date}</span>
+                    );
+                  })}
+                  {blessingDoneCount===blessingTotal&&<div style={{textAlign:'center',padding:'16px',fontSize:14,color:'#5cb87a'}}>🎉 House blessed! You did it!</div>}
+                </div>
+              )}
+
+              {/* BABY STEPS */}
+              {flySection==='babysteps'&&(
+                <div>
+                  <div style={{fontSize:11,color:'rgba(245,230,211,0.5)',marginBottom:14,lineHeight:1.6}}>Brand new to FlyLady? Start here. Do one baby step per day for 7 days. Don't skip ahead — the goal is to build the habit, not clean the whole house at once.</div>
+                  {BABY_STEPS.map((step,i)=>(
+                    <div key={i} style={{display:'flex',gap:12,padding:'13px 14px',borderRadius:12,marginBottom:8,background:'rgba(255,255,255,0.055)',border:'1px solid rgba(255,182,193,0.15)'}}>
+                      <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(255,182,193,0.2)',border:'1px solid rgba(255,182,193,0.4)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'#f5b8c8',flexShrink:0}}>D{step.day}</div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:600,color:'#f5e6d3',marginBottom:3}}>{step.task}</div>
+                        <div style={{fontSize:11,color:'rgba(245,230,211,0.5)',fontStyle:'italic'}}>{step.why}</div>
+                      </div>
                     </div>
                   ))}
+                  <div style={{marginTop:12,padding:'12px 14px',background:'rgba(255,182,193,0.08)',borderRadius:12,border:'1px solid rgba(255,182,193,0.2)'}}>
+                    <div style={{fontSize:12,fontWeight:700,color:'#f5b8c8',marginBottom:4}}>💜 Remember</div>
+                    <div style={{fontSize:11,color:'rgba(245,230,211,0.6)',lineHeight:1.6}}>Your house didn't get messy in a day and it won't get clean in a day either. FlyLady says: <em>"You are not behind. Jump in where you are."</em> Just start. Right now. You've got this.</div>
+                  </div>
                 </div>
-              </div>
-              <div style={{ background:"#0a1520", border:"1px solid #c9a96e22", borderRadius:10, padding:16 }}>
-                <div style={{ fontSize:11, color:"#c9a96e", fontWeight:700, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:12 }}>Order Summary</div>
-                {[
-                  { label:"Subtotal", val:fmt(subtotal), color:"#94a3b8", big:false },
-                  ...(discount>0?[{label:"Discount",val:`-${fmt(discount)}`,color:"#818cf8",big:false}]:[]),
-                  ...(discount>0?[{label:"After Discount",val:fmt(afterDisc),color:"#94a3b8",big:false}]:[]),
-                  { label:`Tax (${(TAX_RATE*100).toFixed(2)}%)`, val:fmt(tax), color:"#94a3b8", big:false },
-                  { label:"Total", val:fmt(total), color:"#c9a96e", big:true },
-                  { label:`Total Paid (${pmts.length})`, val:fmt(paid), color:"#4ade80", big:false },
-                  { label:"Balance Owed", val:fmt(balance), color:balance>0?"#fb7185":"#4ade80", big:true },
-                ].map(row=>(
-                  <div key={row.label} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 0", borderTop:row.big?"1px solid #c9a96e18":"none", marginTop:row.big?4:0 }}>
-                    <span style={{ fontSize:row.big?13:12, color:row.big?"#e2d5c0":"#64748b", fontWeight:row.big?700:400 }}>{row.label}</span>
-                    <span style={{ fontSize:row.big?20:14, color:row.color, fontWeight:row.big?800:500, fontFamily:row.big?"'Playfair Display',serif":"inherit" }}>{row.val}</span>
+              )}
+            </div>
+          );
+        })()}
+        {/* DEALS */}
+        {activeTab==='deals'&&(
+          <div>
+            {/* Pending approval banner for Daisy */}
+            {activeUser==='Daisy'&&pendingDeals.length>0&&(
+              <div style={{background:'rgba(155,90,220,0.18)',border:'1px solid rgba(155,90,220,0.4)',borderRadius:12,padding:'10px 14px',marginBottom:12}}>
+                <div style={{fontSize:12,fontWeight:700,color:'#c49ef5',marginBottom:8}}>\uD83D\uDD14 {pendingDeals.length} deal{pendingDeals.length>1?'s':''} waiting for your approval</div>
+                {pendingDeals.map(d=>(
+                  <div key={d.id} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,background:'rgba(255,255,255,0.05)',borderRadius:9,padding:'8px 10px'}}>
+                    <span style={{fontSize:14}}>{DEAL_TYPE_ICONS[d.deal_type]||'\uD83C\uDFF7\uFE0F'}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:600,color:'#f5e6d3'}}>{d.title}</div>
+                      <div style={{fontSize:10,color:'rgba(245,230,211,0.45)'}}>{d.store} \u00b7 {d.source} \u00b7 by {d.submitted_by}</div>
+                    </div>
+                    <button onClick={()=>approveDeal(d.id)} style={{background:'rgba(92,184,122,0.2)',border:'1px solid rgba(92,184,122,0.4)',color:'#5cb87a',borderRadius:7,padding:'4px 9px',fontSize:11,cursor:'pointer',fontFamily:'inherit',fontWeight:600}}>\u2713</button>
+                    <button onClick={()=>rejectDeal(d.id)} style={{background:'rgba(224,90,90,0.15)',border:'1px solid rgba(224,90,90,0.3)',color:'#e05a5a',borderRadius:7,padding:'4px 9px',fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>\u00d7</button>
                   </div>
                 ))}
               </div>
-              <div style={{ display:"flex", gap:10, justifyContent:"flex-end", flexWrap:"wrap" }}>
-                <button onClick={()=>printReceipt(o)} style={ABL("#c9a96e")}>🖨️ Print / PDF</button>
-                {!o.archived&&<button onClick={()=>{ setViewOrder(null); setEditOrder(o); }} style={ABL("#818cf8")}>Edit</button>}
-                {!o.archived&&<button onClick={()=>archiveOrder(o.id)} style={ABL("#4ade80")}>✓ File Away</button>}
-                {o.archived&&<button onClick={()=>unarchive(o.id)} style={ABL("#4ade80")}>Restore to Active</button>}
-                <button onClick={()=>setDeleteConfirm(o)} style={ABL("#fb7185")}>Delete</button>
+            )}
+
+            {/* View toggle */}
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:11}}>
+              <div style={{display:'flex',gap:4}}>
+                {[['approved','\uD83C\uDFF7\uFE0F Active ('+approvedDeals.length+')'],['pending','\u23F3 Pending ('+pendingDeals.length+')'],['used','\u2713 Used']].map(([v,label])=>(
+                  <button key={v} onClick={()=>setDealView(v)} style={{padding:'4px 9px',borderRadius:14,border:'1px solid',borderColor:dealView===v?'#9b5adc':'rgba(245,230,211,0.2)',background:dealView===v?'rgba(155,90,220,0.2)':'transparent',color:dealView===v?'#c49ef5':'rgba(245,230,211,0.5)',fontSize:10,cursor:'pointer',fontFamily:'inherit',fontWeight:dealView===v?700:400,whiteSpace:'nowrap'}}>{label}</button>
+                ))}
+              </div>
+              <button onClick={()=>{setEditingDeal(null);setDealForm({title:'',store:'',deal_type:'free',category:'Groceries',source:'Ibotta',value:'',expires:'',notes:'',submitted_by:activeUser});setShowModal('deal');}} style={{...addBtn,borderColor:'rgba(155,90,220,0.4)',color:'#c49ef5'}}>+ Add</button>
+            </div>
+
+            {/* Group by */}
+            <div style={{display:'flex',gap:6,marginBottom:11,alignItems:'center'}}>
+              <span style={{fontSize:10,color:'rgba(245,230,211,0.4)'}}>Group:</span>
+              {[['type','Type'],['category','Category'],['store','Store']].map(([v,label])=>(
+                <button key={v} onClick={()=>setDealGroup(v)} style={{padding:'4px 10px',borderRadius:12,border:'1px solid',borderColor:dealGroup===v?'#9b5adc':'rgba(245,230,211,0.18)',background:dealGroup===v?'rgba(155,90,220,0.18)':'transparent',color:dealGroup===v?'#c49ef5':'rgba(245,230,211,0.45)',fontSize:10,cursor:'pointer',fontFamily:'inherit',fontWeight:dealGroup===v?700:400}}>{label}</button>
+              ))}
+              <select value={dealCatFilter} onChange={e=>setDealCatFilter(e.target.value)} style={{...iStyle,marginBottom:0,flex:1,fontSize:10,padding:'5px 8px'}}>
+                {DEAL_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            {filteredDeals.length===0&&<Empty text={dealView==='approved'?'No active deals — add one!':dealView==='pending'?'No pending deals':'No used deals this week'}/>}
+
+            {/* Grouped deals */}
+            {(() => {
+              const groups = {};
+              filteredDeals.forEach(d=>{
+                const key = dealGroup==='type'?d.deal_type:dealGroup==='category'?d.category:d.store;
+                if (!groups[key]) groups[key]=[];
+                groups[key].push(d);
+              });
+              return Object.entries(groups).map(([groupKey,groupDeals])=>(
+                <div key={groupKey} style={{marginBottom:16}}>
+                  <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:8}}>
+                    {dealGroup==='type'&&<span style={{fontSize:16}}>{DEAL_TYPE_ICONS[groupKey]||'\uD83C\uDFF7\uFE0F'}</span>}
+                    {dealGroup==='category'&&<span style={{fontSize:16}}>{DEAL_CAT_ICONS[groupKey]||'\u2728'}</span>}
+                    <span style={{fontSize:12,fontWeight:700,color:dealGroup==='type'?(DEAL_TYPE_COLORS[groupKey]||'#dc783c'):'#f5e6d3',textTransform:'capitalize'}}>{groupKey}</span>
+                    <span style={{fontSize:10,color:'rgba(245,230,211,0.35)'}}>({groupDeals.length})</span>
+                  </div>
+                  {groupDeals.map(d=>{
+                    const tc = DEAL_TYPE_COLORS[d.deal_type]||'#dc783c';
+                    const isExpired = d.expires&&d.expires<todayStr();
+                    return(
+                      <div key={d.id} style={{padding:'12px 14px',borderRadius:12,marginBottom:7,background:d.used?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.065)',border:'1px solid '+(isExpired?'rgba(224,90,90,0.3)':tc+'35'),opacity:d.used?0.6:1}}>
+                        <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
+                          <span style={{fontSize:20,flexShrink:0}}>{DEAL_TYPE_ICONS[d.deal_type]||'\uD83C\uDFF7\uFE0F'}</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                              <span style={{fontSize:13,fontWeight:600,color:d.used?'rgba(245,230,211,0.35)':'#f5e6d3',textDecoration:d.used?'line-through':'none'}}>{d.title}</span>
+                              {d.value&&<span style={{fontSize:10,background:tc+'22',color:tc,border:'1px solid '+tc+'44',borderRadius:6,padding:'1px 7px',fontWeight:700}}>{d.value}</span>}
+                              {isExpired&&<span style={{fontSize:9,background:'rgba(224,90,90,0.2)',color:'#e05a5a',border:'1px solid rgba(224,90,90,0.4)',borderRadius:6,padding:'1px 6px'}}>EXPIRED</span>}
+                            </div>
+                            <div style={{fontSize:11,color:'rgba(245,230,211,0.45)',marginTop:3}}>
+                              {d.store} \u00b7 {d.source}
+                              {d.expires?' \u00b7 exp '+d.expires:''}
+                              {d.notes?' \u00b7 '+d.notes:''}
+                            </div>
+                            <div style={{fontSize:10,color:'rgba(245,230,211,0.3)',marginTop:2}}>{d.category} \u00b7 Added by {d.submitted_by}</div>
+                          </div>
+                          <div style={{display:'flex',gap:3,flexShrink:0}}>
+                            <button onClick={()=>{setEditingDeal(d);setDealForm({title:d.title,store:d.store,deal_type:d.deal_type,category:d.category,source:d.source,value:d.value||'',expires:d.expires||'',notes:d.notes||'',submitted_by:d.submitted_by});setShowModal('deal');}} style={iconBtn}>\u270F\uFE0F</button>
+                            <button onClick={()=>deleteDeal(d.id)} style={iconBtn}>\uD83D\uDDD1\uFE0F</button>
+                          </div>
+                        </div>
+                        {!d.used&&<button onClick={()=>toggleDealUsed(d)} style={{width:'100%',marginTop:9,padding:'6px',borderRadius:8,border:'1px solid rgba(92,184,122,0.35)',background:'rgba(92,184,122,0.08)',color:'#5cb87a',fontSize:11,cursor:'pointer',fontFamily:'inherit',fontWeight:600}}>\u2713 Mark as Used</button>}
+                      </div>
+                    );
+                  })}
+                </div>
+              ));
+            })()}
+          </div>
+        )}
+        {/* CALENDAR */}
+        {activeTab==='calendar'&&(
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+              <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                <button onClick={()=>setCalDate(new Date(year,month-1,1))} style={{background:'transparent',border:'none',color:'rgba(245,230,211,0.6)',fontSize:18,cursor:'pointer',padding:'0 4px'}}>‹</button>
+                <span style={{fontSize:13,fontWeight:600,color:'#f5e6d3'}}>{calDate.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</span>
+                <button onClick={()=>setCalDate(new Date(year,month+1,1))} style={{background:'transparent',border:'none',color:'rgba(245,230,211,0.6)',fontSize:18,cursor:'pointer',padding:'0 4px'}}>›</button>
+              </div>
+              <div style={{display:'flex',gap:6}}>
+                <button onClick={()=>{setCalDate(new Date());setSelectedDay(null);}} style={{background:'transparent',border:'1px solid rgba(245,230,211,0.2)',color:'rgba(245,230,211,0.55)',borderRadius:7,padding:'4px 9px',fontSize:10,cursor:'pointer',fontFamily:'inherit'}}>Today</button>
+                <button onClick={()=>{setEditingAppt(null);setApptForm({title:'',date:apptDateStr(new Date()),time:'',notes:'',person:'Anyone',category:'appointment'});setShowModal('appt');}} style={{...addBtn,borderColor:'rgba(92,184,122,0.4)',color:'#a8f5b8'}}>+ Add</button>
               </div>
             </div>
-          </Modal>
-        );
-      })()}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:4}}>
+              {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d=><div key={d} style={{textAlign:'center',fontSize:10,color:'rgba(245,230,211,0.35)',padding:'3px 0'}}>{d}</div>)}
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,marginBottom:14}}>
+              {calCells.map((d,i)=>{
+                if (!d) return <div key={i}/>;
+                const ds=year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+                const da=apptsByDate(ds);
+                const isToday=d===todayD.getDate()&&month===todayD.getMonth()&&year===todayD.getFullYear();
+                const isSel=selectedDay===ds;
+                return(
+                  <div key={i} onClick={()=>setSelectedDay(isSel?null:ds)} style={{minHeight:38,borderRadius:8,padding:'4px 3px',cursor:'pointer',background:isSel?'rgba(92,184,122,0.2)':isToday?'rgba(220,120,60,0.18)':'rgba(255,255,255,0.04)',border:'1px solid '+(isSel?'rgba(92,184,122,0.5)':isToday?'rgba(220,120,60,0.4)':'rgba(245,230,211,0.08)'),textAlign:'center'}}>
+                    <div style={{fontSize:11,fontWeight:isToday?700:400,color:isToday?'#dc783c':isSel?'#5cb87a':'rgba(245,230,211,0.7)'}}>{d}</div>
+                    <div style={{display:'flex',flexDirection:'column',gap:1,marginTop:2}}>
+                      {da.slice(0,2).map(a=><div key={a.id} style={{height:4,borderRadius:2,background:APPT_COLORS[a.category]||'#dc783c'}}/>)}
+                      {da.length>2&&<div style={{fontSize:8,color:'rgba(245,230,211,0.4)'}}>+{da.length-2}</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {selectedDay?(
+              <div>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:9}}>
+                  <span style={{fontSize:12,fontWeight:600,color:'#5cb87a'}}>{formatDate(selectedDay)}</span>
+                  <button onClick={()=>{setEditingAppt(null);setApptForm({title:'',date:selectedDay,time:'',notes:'',person:'Anyone',category:'appointment'});setShowModal('appt');}} style={{background:'rgba(92,184,122,0.15)',border:'1px solid rgba(92,184,122,0.35)',color:'#5cb87a',borderRadius:8,padding:'4px 10px',fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>+ Add</button>
+                </div>
+                {apptsByDate(selectedDay).length===0?<Empty text="Nothing scheduled — tap + to add"/>:apptsByDate(selectedDay).map(a=><ApptCard key={a.id} appt={a} onEdit={()=>{setEditingAppt(a);setApptForm({title:a.title,date:a.date,time:a.time||'',notes:a.notes||'',person:a.person,category:a.category});setShowModal('appt');}} onDelete={()=>deleteAppt(a.id)} formatTime={formatTime}/>)}
+              </div>
+            ):(
+              <div>
+                <p style={{margin:'0 0 9px',fontSize:11,color:'rgba(245,230,211,0.42)'}}>Upcoming</p>
+                {upcomingAppts().length===0?<Empty text="No upcoming appointments"/>:upcomingAppts().slice(0,8).map(a=>(
+                  <div key={a.id} style={{display:'flex',gap:10,padding:'10px 13px',borderRadius:11,marginBottom:7,background:'rgba(255,255,255,0.055)',border:'1px solid '+(APPT_COLORS[a.category]||'#dc783c')+'35'}}>
+                    <div style={{width:3,borderRadius:2,background:APPT_COLORS[a.category]||'#dc783c',flexShrink:0}}/>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:12,fontWeight:600,color:'#f5e6d3'}}>{a.title}</div>
+                      <div style={{fontSize:10,color:'rgba(245,230,211,0.45)',marginTop:2}}>{formatDate(a.date)}{a.time?' · '+formatTime(a.time):''}{a.person!=='Anyone'?' · '+a.person:''}</div>
+                    </div>
+                    <button onClick={()=>deleteAppt(a.id)} style={iconBtn}>🗑️</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
-      {deleteConfirm&&(
-        <Modal title="Delete Order?" onClose={()=>setDeleteConfirm(null)}>
-          <p style={{ color:"#94a3b8", marginTop:0 }}>Delete order for <strong style={{ color:"#e2d5c0" }}>{deleteConfirm.customer}</strong>? This cannot be undone.</p>
-          <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
-            <button onClick={()=>setDeleteConfirm(null)} style={{ background:"none", border:"1px solid #334155", color:"#94a3b8", borderRadius:8, padding:"8px 20px", cursor:"pointer", fontSize:13 }}>Cancel</button>
-            <button onClick={()=>deleteOrder(deleteConfirm.id)} style={{ background:"#fb7185", border:"none", color:"#fff", borderRadius:8, padding:"8px 24px", cursor:"pointer", fontSize:13, fontWeight:800 }}>Delete</button>
+        {/* MANAGER */}
+        {activeTab==='manager'&&(
+          <div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:7,marginBottom:13}}>
+              {[{label:'Overdue/Never',count:managerItems.filter(i=>getStatus(i)==='overdue'||getStatus(i)==='never').length,color:'#e05a5a'},{label:'Due Soon',count:managerItems.filter(i=>getStatus(i)==='soon').length,color:'#dc9a3c'},{label:'Up to Date',count:managerItems.filter(i=>getStatus(i)==='ok').length,color:'#5cb87a'}].map(s=>(
+                <div key={s.label} style={{background:'rgba(255,255,255,0.05)',borderRadius:11,padding:'9px 6px',textAlign:'center',border:'1px solid '+s.color+'30'}}>
+                  <div style={{fontSize:21,fontWeight:700,color:s.color}}>{s.count}</div>
+                  <div style={{fontSize:9,color:'rgba(245,230,211,0.45)',marginTop:2,lineHeight:1.3}}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:7,marginBottom:11,alignItems:'center'}}>
+              <select value={managerCat} onChange={e=>setManagerCat(e.target.value)} style={{...iStyle,marginBottom:0,flex:1,fontSize:11,padding:'6px 9px'}}>
+                {MANAGER_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+              <select value={managerSort} onChange={e=>setManagerSort(e.target.value)} style={{...iStyle,marginBottom:0,width:'auto',fontSize:11,padding:'6px 9px'}}>
+                <option value="status">By urgency</option>
+                <option value="name">A–Z</option>
+              </select>
+              <button onClick={()=>{setEditingManager(null);setManagerForm({title:'',icon:'filter',interval_type:'3months',notes:'',category:'HVAC'});setShowModal('manager');}} style={addBtn}>+ Add</button>
+            </div>
+            {filteredManager.map(item=>{
+              const st=getStatus(item), sc=statusColor(st);
+              return(
+                <div key={item.id} style={{padding:'13px 15px',borderRadius:13,marginBottom:9,background:'rgba(255,255,255,0.055)',border:'1px solid '+sc+'40'}}>
+                  <div style={{display:'flex',alignItems:'flex-start',gap:11}}>
+                    <span style={{fontSize:20,flexShrink:0,marginTop:1}}>{MANAGER_ICONS[item.icon]||'🔩'}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:'flex',alignItems:'center',gap:7,flexWrap:'wrap'}}>
+                        <span style={{fontSize:13,fontWeight:600,color:'#f5e6d3'}}>{item.title}</span>
+                        <span style={{fontSize:10,background:sc+'20',color:sc,border:'1px solid '+sc+'50',borderRadius:7,padding:'2px 7px'}}>{statusLabel(item)}</span>
+                      </div>
+                      <div style={{fontSize:11,color:'rgba(245,230,211,0.4)',marginTop:3}}>{item.category} · {MANAGER_INTERVALS.find(i=>i.value===item.interval_type)?.label}{item.last_done?' · Last: '+item.last_done:''}</div>
+                      {item.notes&&<div style={{fontSize:11,color:'rgba(245,230,211,0.32)',marginTop:3,fontStyle:'italic'}}>{item.notes}</div>}
+                    </div>
+                    <div style={{display:'flex',gap:3,flexShrink:0}}>
+                      <button onClick={()=>{setEditingManager(item);setManagerForm({title:item.title,icon:item.icon,interval_type:item.interval_type,notes:item.notes||'',category:item.category});setShowModal('manager');}} style={iconBtn}>✏️</button>
+                      <button onClick={()=>deleteManager(item.id)} style={iconBtn}>🗑️</button>
+                    </div>
+                  </div>
+                  <button onClick={()=>markManagerDone(item.id)} style={{width:'100%',marginTop:10,padding:'7px',borderRadius:9,border:'1px solid rgba(92,184,122,0.4)',background:'rgba(92,184,122,0.1)',color:'#5cb87a',fontSize:12,cursor:'pointer',fontFamily:'inherit',fontWeight:600}}>✓ Mark Done Today</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div style={{height:40}}/>
+      </div>
+
+      {/* CHORE MODAL */}
+      {showModal==='chore'&&(
+        <Modal onClose={()=>setShowModal(false)} title={editingChore?'Edit Chore':'New Chore'}>
+          <label style={lStyle}>Task name</label>
+          <input value={choreForm.title} onChange={e=>setChoreForm(f=>({...f,title:e.target.value}))} placeholder="e.g. Wash dishes" style={iStyle}/>
+          <label style={lStyle}>Icon</label>
+          <div style={{display:'flex',flexWrap:'wrap',gap:7,marginBottom:13}}>
+            {Object.entries(ICONS).map(([key,emoji])=>(
+              <button key={key} onClick={()=>setChoreForm(f=>({...f,icon:key}))} style={{width:36,height:36,border:'2px solid',borderColor:choreForm.icon===key?'#dc783c':'rgba(245,230,211,0.18)',borderRadius:9,background:choreForm.icon===key?'rgba(220,120,60,0.25)':'rgba(255,255,255,0.05)',fontSize:17,cursor:'pointer'}}>{emoji}</button>
+            ))}
+          </div>
+          <label style={lStyle}>Assigned to</label>
+          <select value={choreForm.assigned_to} onChange={e=>setChoreForm(f=>({...f,assigned_to:e.target.value}))} style={iStyle}>
+            <option value="Everyone">Everyone</option>
+            {FAMILY.map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
+          <label style={lStyle}>Repeat</label>
+          <select value={choreForm.repeat_type} onChange={e=>setChoreForm(f=>({...f,repeat_type:e.target.value,days:[]}))} style={iStyle}>
+            <option value="daily">Every day</option>
+            <option value="weekly">Weekly (choose days)</option>
+            <option value="monthly">Monthly</option>
+            <option value="once">One time</option>
+          </select>
+          {choreForm.repeat_type==='weekly'&&(
+            <>
+              <label style={lStyle}>Days</label>
+              <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:13}}>
+                {DAYS.map(day=>(
+                  <button key={day} onClick={()=>setChoreForm(f=>({...f,days:f.days.includes(day)?f.days.filter(d=>d!==day):[...f.days,day]}))} style={{padding:'5px 9px',borderRadius:7,border:'1px solid',borderColor:choreForm.days.includes(day)?'#dc783c':'rgba(245,230,211,0.18)',background:choreForm.days.includes(day)?'rgba(220,120,60,0.22)':'transparent',color:choreForm.days.includes(day)?'#dc783c':'rgba(245,230,211,0.55)',fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>{day.slice(0,3)}</button>
+                ))}
+              </div>
+            </>
+          )}
+          <div style={{display:'flex',gap:9}}>
+            <button onClick={()=>setShowModal(false)} style={{...iStyle,cursor:'pointer',textAlign:'center',background:'transparent',marginBottom:0}}>Cancel</button>
+            <button onClick={saveChore} disabled={saving} style={{...iStyle,cursor:'pointer',textAlign:'center',background:'linear-gradient(135deg,#dc783c,#c45fa0)',border:'none',color:'#fff',fontWeight:700,marginBottom:0}}>{saving?'Saving…':'Save'}</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* LAUNDRY MODAL */}
+      {showModal==='laundry'&&(
+        <Modal onClose={()=>setShowModal(false)} title={editingLaundry?'Edit Laundry Day':'Add Laundry Day'}>
+          <label style={lStyle}>Name</label>
+          <input value={laundryForm.person} onChange={e=>setLaundryForm(f=>({...f,person:e.target.value}))} placeholder="Name" style={iStyle}/>
+          <label style={lStyle}>Laundry day</label>
+          <select value={laundryForm.day} onChange={e=>setLaundryForm(f=>({...f,day:e.target.value}))} style={iStyle}>
+            {DAYS.filter(d=>d!=='Sunday').map(d=><option key={d} value={d}>{d}</option>)}
+          </select>
+          <div style={{display:'flex',gap:9}}>
+            <button onClick={()=>setShowModal(false)} style={{...iStyle,cursor:'pointer',textAlign:'center',background:'transparent',marginBottom:0}}>Cancel</button>
+            <button onClick={saveLaundry} disabled={saving} style={{...iStyle,cursor:'pointer',textAlign:'center',background:'linear-gradient(135deg,#dc783c,#c45fa0)',border:'none',color:'#fff',fontWeight:700,marginBottom:0}}>{saving?'Saving…':'Save'}</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* MANAGER MODAL */}
+      {showModal==='manager'&&(
+        <Modal onClose={()=>setShowModal(false)} title={editingManager?'Edit Task':'New Maintenance Task'}>
+          <label style={lStyle}>Task name</label>
+          <input value={managerForm.title} onChange={e=>setManagerForm(f=>({...f,title:e.target.value}))} placeholder="e.g. Replace HVAC filter" style={iStyle}/>
+          <label style={lStyle}>Category</label>
+          <select value={managerForm.category} onChange={e=>setManagerForm(f=>({...f,category:e.target.value}))} style={iStyle}>
+            {MANAGER_CATEGORIES.filter(c=>c!=='All').map(c=><option key={c} value={c}>{c}</option>)}
+          </select>
+          <label style={lStyle}>Icon</label>
+          <div style={{display:'flex',flexWrap:'wrap',gap:7,marginBottom:13}}>
+            {Object.entries(MANAGER_ICONS).map(([key,emoji])=>(
+              <button key={key} onClick={()=>setManagerForm(f=>({...f,icon:key}))} style={{width:36,height:36,border:'2px solid',borderColor:managerForm.icon===key?'#dc783c':'rgba(245,230,211,0.18)',borderRadius:9,background:managerForm.icon===key?'rgba(220,120,60,0.25)':'rgba(255,255,255,0.05)',fontSize:17,cursor:'pointer'}}>{emoji}</button>
+            ))}
+          </div>
+          <label style={lStyle}>Frequency</label>
+          <select value={managerForm.interval_type} onChange={e=>setManagerForm(f=>({...f,interval_type:e.target.value}))} style={iStyle}>
+            {MANAGER_INTERVALS.map(i=><option key={i.value} value={i.value}>{i.label}</option>)}
+          </select>
+          <label style={lStyle}>Notes (optional)</label>
+          <input value={managerForm.notes} onChange={e=>setManagerForm(f=>({...f,notes:e.target.value}))} placeholder="Any reminder details" style={iStyle}/>
+          <div style={{display:'flex',gap:9}}>
+            <button onClick={()=>setShowModal(false)} style={{...iStyle,cursor:'pointer',textAlign:'center',background:'transparent',marginBottom:0}}>Cancel</button>
+            <button onClick={saveManager} disabled={saving} style={{...iStyle,cursor:'pointer',textAlign:'center',background:'linear-gradient(135deg,#dc783c,#c45fa0)',border:'none',color:'#fff',fontWeight:700,marginBottom:0}}>{saving?'Saving…':'Save'}</button>
+          </div>
+        </Modal>
+      )}
+
+      {/* TODO MODAL */}
+      {showModal==='todo'&&(
+        <Modal onClose={()=>setShowModal(false)} title={editingTodo?'Edit To-Do':'New To-Do'}>
+          <label style={lStyle}>What needs to get done?</label>
+          <input value={todoForm.title} onChange={e=>setTodoForm(f=>({...f,title:e.target.value}))} placeholder="e.g. Fix the back door handle" style={iStyle}/>
+          <label style={lStyle}>Notes (optional)</label>
+          <input value={todoForm.notes} onChange={e=>setTodoForm(f=>({...f,notes:e.target.value}))} placeholder="Any extra details…" style={iStyle}/>
+          <label style={lStyle}>Priority</label>
+          <div style={{display:'flex',gap:7,marginBottom:13}}>
+            {TODO_PRIORITIES.map(p=>(
+              <button key={p} onClick={()=>setTodoForm(f=>({...f,priority:p}))} style={{flex:1,padding:'8px 4px',borderRadius:9,border:'1px solid',borderColor:todoForm.priority===p?PRIORITY_COLORS[p]:'rgba(245,230,211,0.18)',background:todoForm.priority===p?(PRIORITY_COLORS[p]+'22'):'transparent',color:todoForm.priority===p?PRIORITY_COLORS[p]:'rgba(245,230,211,0.5)',fontSize:12,cursor:'pointer',fontFamily:'inherit',fontWeight:todoForm.priority===p?700:400}}>
+                {PRIORITY_LABELS[p]}
+              </button>
+            ))}
+          </div>
+          <label style={lStyle}>Assigned to</label>
+          <select value={todoForm.assigned_to} onChange={e=>setTodoForm(f=>({...f,assigned_to:e.target.value}))} style={iStyle}>
+            <option value="Anyone">Anyone</option>
+            {FAMILY.map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
+          <div style={{display:'flex',gap:9}}>
+            <button onClick={()=>setShowModal(false)} style={{...iStyle,cursor:'pointer',textAlign:'center',background:'transparent',marginBottom:0}}>Cancel</button>
+            <button onClick={saveTodo} disabled={saving} style={{...iStyle,cursor:'pointer',textAlign:'center',background:'linear-gradient(135deg,#6495ed,#9370db)',border:'none',color:'#fff',fontWeight:700,marginBottom:0}}>{saving?'Saving…':'Save'}</button>
+          </div>
+        </Modal>
+      )}
+
+
+
+      {/* ZONE MODAL */}
+      {showModal==='zone'&&(
+        <Modal onClose={()=>setShowModal(false)} title={editingZone?'Edit Zone':'Add Zone'}>
+          <label style={lStyle}>Zone name</label>
+          <input value={zoneForm.name} onChange={e=>setZoneForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Master Bedroom" style={iStyle}/>
+          <label style={lStyle}>Icon</label>
+          <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:13}}>
+            {['🚪','🍳','🚿','🛏️','🛋️','🏠','📚','🧺','🪴','🚗','🏡','✨'].map(em=>(
+              <button key={em} onClick={()=>setZoneForm(f=>({...f,icon:em}))} style={{width:36,height:36,border:'2px solid',borderColor:zoneForm.icon===em?'#f5b8c8':'rgba(245,230,211,0.18)',borderRadius:9,background:zoneForm.icon===em?'rgba(255,182,193,0.2)':'rgba(255,255,255,0.05)',fontSize:18,cursor:'pointer'}}>{em}</button>
+            ))}
+          </div>
+          <label style={lStyle}>Color</label>
+          <div style={{display:'flex',gap:8,marginBottom:13}}>
+            {['#dc783c','#6495ed','#9370db','#5cb87a','#e05a5a','#dc9a3c','#f5b8c8'].map(c=>(
+              <button key={c} onClick={()=>setZoneForm(f=>({...f,color:c}))} style={{width:28,height:28,borderRadius:'50%',background:c,border:'3px solid',borderColor:zoneForm.color===c?'#fff':'transparent',cursor:'pointer'}}/>
+            ))}
+          </div>
+          <label style={lStyle}>Tasks</label>
+          {zoneForm.tasks.map((task,i)=>(
+            <div key={i} style={{display:'flex',gap:6,marginBottom:5}}>
+              <div style={{flex:1,fontSize:11,color:'rgba(245,230,211,0.7)',padding:'8px 10px',background:'rgba(255,255,255,0.06)',borderRadius:8,border:'1px solid rgba(245,230,211,0.12)'}}>{task}</div>
+              <button onClick={()=>setZoneForm(f=>({...f,tasks:f.tasks.filter((_,j)=>j!==i)}))} style={{background:'transparent',border:'none',color:'rgba(245,230,211,0.4)',cursor:'pointer',fontSize:16}}>×</button>
+            </div>
+          ))}
+          <div style={{display:'flex',gap:6,marginBottom:13}}>
+            <input value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&newTask.trim()){setZoneForm(f=>({...f,tasks:[...f.tasks,newTask.trim()]}));setNewTask('');}}} placeholder="Add a task & press Enter" style={{...iStyle,marginBottom:0,flex:1}}/>
+            <button onClick={()=>{if(newTask.trim()){setZoneForm(f=>({...f,tasks:[...f.tasks,newTask.trim()]}));setNewTask('');}}} style={{...addBtn,borderColor:'rgba(255,182,193,0.4)',color:'#f5b8c8',padding:'9px 12px'}}>+</button>
+          </div>
+          <div style={{display:'flex',gap:9}}>
+            <button onClick={()=>setShowModal(false)} style={{...iStyle,cursor:'pointer',textAlign:'center',background:'transparent',marginBottom:0}}>Cancel</button>
+            <button onClick={()=>{
+              if(!zoneForm.name.trim()) return;
+              if(editingZone) setZones(zones.map(z=>z.id===editingZone.id?{...z,...zoneForm}:z));
+              else setZones([...zones,{...zoneForm,id:Date.now()}]);
+              setShowModal(false);setEditingZone(null);
+            }} style={{...iStyle,cursor:'pointer',textAlign:'center',background:'linear-gradient(135deg,#f5b8c8,#dc783c)',border:'none',color:'#fff',fontWeight:700,marginBottom:0}}>Save</button>
+          </div>
+        </Modal>
+      )}
+      {/* DEAL MODAL */}
+      {showModal==='deal'&&(
+        <Modal onClose={()=>setShowModal(false)} title={editingDeal?'Edit Deal':'Add a Deal'}>
+          <label style={lStyle}>Deal title</label>
+          <input value={dealForm.title} onChange={e=>setDealForm(f=>({...f,title:e.target.value}))} placeholder="e.g. Free yogurt with Ibotta" style={iStyle}/>
+          <label style={lStyle}>Store</label>
+          <input value={dealForm.store} onChange={e=>setDealForm(f=>({...f,store:e.target.value}))} placeholder="e.g. Walmart, Target, HEB" style={iStyle}/>
+          <label style={lStyle}>Deal type</label>
+          <div style={{display:'flex',gap:6,marginBottom:13}}>
+            {DEAL_TYPES.map(t=>(
+              <button key={t} onClick={()=>setDealForm(f=>({...f,deal_type:t}))} style={{flex:1,padding:'7px 3px',borderRadius:9,border:'1px solid',borderColor:dealForm.deal_type===t?(DEAL_TYPE_COLORS[t]||'#dc783c'):'rgba(245,230,211,0.18)',background:dealForm.deal_type===t?((DEAL_TYPE_COLORS[t]||'#dc783c')+'22'):'transparent',color:dealForm.deal_type===t?(DEAL_TYPE_COLORS[t]||'#dc783c'):'rgba(245,230,211,0.5)',fontSize:10,cursor:'pointer',fontFamily:'inherit',fontWeight:dealForm.deal_type===t?700:400,textAlign:'center'}}>
+                {DEAL_TYPE_ICONS[t]}<br/>{t}
+              </button>
+            ))}
+          </div>
+          <label style={lStyle}>Category</label>
+          <select value={dealForm.category} onChange={e=>setDealForm(f=>({...f,category:e.target.value}))} style={iStyle}>
+            {DEAL_CATEGORIES.filter(c=>c!=='All').map(c=><option key={c} value={c}>{c}</option>)}
+          </select>
+          <label style={lStyle}>Source</label>
+          <select value={dealForm.source} onChange={e=>setDealForm(f=>({...f,source:e.target.value}))} style={iStyle}>
+            {DEAL_SOURCES.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+          <label style={lStyle}>Value (optional)</label>
+          <input value={dealForm.value} onChange={e=>setDealForm(f=>({...f,value:e.target.value}))} placeholder="e.g. $2.50 back, FREE, 50% off" style={iStyle}/>
+          <label style={lStyle}>Expires (optional)</label>
+          <input type="date" value={dealForm.expires} onChange={e=>setDealForm(f=>({...f,expires:e.target.value}))} style={{...iStyle,colorScheme:'dark'}}/>
+          <label style={lStyle}>Notes (optional)</label>
+          <input value={dealForm.notes} onChange={e=>setDealForm(f=>({...f,notes:e.target.value}))} placeholder="e.g. Must buy 2, use code SAVE10" style={iStyle}/>
+          {activeUser!=='Daisy'&&<div style={{fontSize:11,color:'rgba(245,230,211,0.45)',marginBottom:12,padding:'8px 12px',background:'rgba(155,90,220,0.12)',borderRadius:8,border:'1px solid rgba(155,90,220,0.25)'}}>\uD83D\uDD14 Daisy will approve this before it goes live</div>}
+          <div style={{display:'flex',gap:9}}>
+            <button onClick={()=>setShowModal(false)} style={{...iStyle,cursor:'pointer',textAlign:'center',background:'transparent',marginBottom:0}}>Cancel</button>
+            <button onClick={saveDeal} disabled={saving} style={{...iStyle,cursor:'pointer',textAlign:'center',background:'linear-gradient(135deg,#9b5adc,#6495ed)',border:'none',color:'#fff',fontWeight:700,marginBottom:0}}>{saving?'Saving\u2026':'Save'}</button>
+          </div>
+        </Modal>
+      )}
+      {/* APPT MODAL */}
+      {showModal==='appt'&&(
+        <Modal onClose={()=>setShowModal(false)} title={editingAppt?'Edit Appointment':'New Appointment'}>
+          <label style={lStyle}>Title</label>
+          <input value={apptForm.title} onChange={e=>setApptForm(f=>({...f,title:e.target.value}))} placeholder="e.g. Dr. Martinez checkup" style={iStyle}/>
+          <label style={lStyle}>Category</label>
+          <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:13}}>
+            {APPT_CATEGORIES.map(cat=>(
+              <button key={cat} onClick={()=>setApptForm(f=>({...f,category:cat}))} style={{padding:'5px 11px',borderRadius:8,border:'1px solid',borderColor:apptForm.category===cat?(APPT_COLORS[cat]||'#dc783c'):'rgba(245,230,211,0.18)',background:apptForm.category===cat?((APPT_COLORS[cat]||'#dc783c')+'25'):'transparent',color:apptForm.category===cat?(APPT_COLORS[cat]||'#dc783c'):'rgba(245,230,211,0.55)',fontSize:11,cursor:'pointer',fontFamily:'inherit',fontWeight:apptForm.category===cat?700:400,textTransform:'capitalize'}}>{cat}</button>
+            ))}
+          </div>
+          <label style={lStyle}>Date</label>
+          <input type="date" value={apptForm.date} onChange={e=>setApptForm(f=>({...f,date:e.target.value}))} style={{...iStyle,colorScheme:'dark'}}/>
+          <label style={lStyle}>Time (optional)</label>
+          <input type="time" value={apptForm.time} onChange={e=>setApptForm(f=>({...f,time:e.target.value}))} style={{...iStyle,colorScheme:'dark'}}/>
+          <label style={lStyle}>For</label>
+          <select value={apptForm.person} onChange={e=>setApptForm(f=>({...f,person:e.target.value}))} style={iStyle}>
+            <option value="Anyone">Anyone / Family</option>
+            {FAMILY.map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
+          <label style={lStyle}>Notes (optional)</label>
+          <input value={apptForm.notes} onChange={e=>setApptForm(f=>({...f,notes:e.target.value}))} placeholder="Any details…" style={iStyle}/>
+          <div style={{display:'flex',gap:9}}>
+            <button onClick={()=>setShowModal(false)} style={{...iStyle,cursor:'pointer',textAlign:'center',background:'transparent',marginBottom:0}}>Cancel</button>
+            <button onClick={saveAppt} disabled={saving} style={{...iStyle,cursor:'pointer',textAlign:'center',background:'linear-gradient(135deg,#5cb87a,#3a9a5c)',border:'none',color:'#fff',fontWeight:700,marginBottom:0}}>{saving?'Saving…':'Save'}</button>
           </div>
         </Modal>
       )}
     </div>
   );
 }
+
+function ApptCard({ appt, onEdit, onDelete, formatTime }) {
+  const color = APPT_COLORS[appt.category] || '#dc783c';
+  return (
+    <div style={{display:'flex',gap:10,padding:'11px 13px',borderRadius:11,marginBottom:7,background:'rgba(255,255,255,0.06)',border:'1px solid '+color+'55'}}>
+      <div style={{width:3,borderRadius:2,background:color,flexShrink:0}}/>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:13,fontWeight:600,color:'#f5e6d3'}}>{appt.title}</div>
+        <div style={{fontSize:11,color:'rgba(245,230,211,0.45)',marginTop:3}}>
+          {appt.time?formatTime(appt.time):'All day'}
+          {appt.person!=='Anyone'?' · '+appt.person:''}
+          {appt.notes?' · '+appt.notes:''}
+        </div>
+        <div style={{display:'inline-block',marginTop:4,fontSize:9,background:color+'22',color:color,border:'1px solid '+color+'44',borderRadius:5,padding:'1px 6px',textTransform:'capitalize'}}>{appt.category}</div>
+      </div>
+      <div style={{display:'flex',gap:3,flexShrink:0}}>
+        <button onClick={onEdit} style={iconBtn}>✏️</button>
+        <button onClick={onDelete} style={iconBtn}>🗑️</button>
+      </div>
+    </div>
+  );
+}
+
+function ChoreCard({ chore, onToggle, onEdit, onDelete, showSchedule }) {
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:10,padding:'12px 14px',borderRadius:12,marginBottom:8,background:chore.done?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.065)',border:'1px solid '+(chore.done?'rgba(245,230,211,0.06)':'rgba(245,230,211,0.11)')}}>
+      <button onClick={()=>onToggle(chore)} style={{width:27,height:27,borderRadius:'50%',border:'2px solid',borderColor:chore.done?'#5cb87a':'rgba(245,230,211,0.28)',background:chore.done?'rgba(92,184,122,0.2)':'transparent',fontSize:12,cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',color:'#5cb87a'}}>{chore.done?'✓':''}</button>
+      <div style={{fontSize:19,flexShrink:0}}>{ICONS[chore.icon]||'✨'}</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:13,fontWeight:600,color:chore.done?'rgba(245,230,211,0.28)':'#f5e6d3',textDecoration:chore.done?'line-through':'none'}}>{chore.title}</div>
+        <div style={{fontSize:11,color:'rgba(245,230,211,0.38)',marginTop:2}}>
+          {chore.assigned_to}{showSchedule?' · '+getRepeatLabel(chore):''}
+          {chore.done&&chore.done_by?' · Done by '+chore.done_by:''}
+        </div>
+      </div>
+      <button onClick={onEdit} style={iconBtn}>✏️</button>
+      <button onClick={onDelete} style={iconBtn}>🗑️</button>
+    </div>
+  );
+}
+
+function Modal({ onClose, title, children }) {
+  return (
+    <div style={{position:'fixed',inset:0,zIndex:100,background:'rgba(10,5,25,0.87)',backdropFilter:'blur(8px)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{width:'100%',maxWidth:480,background:'linear-gradient(180deg,#2d1654,#1a0a2e)',borderRadius:'22px 22px 0 0',padding:'20px 16px 34px',border:'1px solid rgba(245,230,211,0.14)',borderBottom:'none',maxHeight:'88vh',overflowY:'auto'}}>
+        <h3 style={{margin:'0 0 15px',fontSize:16,fontWeight:700,color:'#f5e6d3'}}>{title}</h3>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Empty({ text }) {
+  return <div style={{textAlign:'center',padding:'36px 0',color:'rgba(245,230,211,0.28)',fontSize:13}}>{text}</div>;
+}
+
+const APPT_COLORS_CONST = { appointment:'#dc783c', school:'#6495ed', medical:'#e05a5a', work:'#9370db', errand:'#5cb87a', other:'#dc9a3c' };
+const addBtn = {background:'linear-gradient(135deg,rgba(220,120,60,0.28),rgba(180,80,160,0.28))',border:'1px solid rgba(220,120,60,0.38)',color:'#e8b88a',borderRadius:9,padding:'6px 12px',fontSize:11,cursor:'pointer',fontFamily:'inherit',fontWeight:600,whiteSpace:'nowrap'};
+const iconBtn = {background:'transparent',border:'none',fontSize:14,cursor:'pointer',padding:'3px',opacity:0.55};
+const lStyle = {display:'block',fontSize:11,color:'rgba(245,230,211,0.48)',letterSpacing:'0.08em',textTransform:'uppercase',marginBottom:5};
+const iStyle = {width:'100%',padding:'9px 12px',borderRadius:9,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(245,230,211,0.18)',color:'#f5e6d3',fontSize:13,fontFamily:'inherit',marginBottom:12,boxSizing:'border-box'};
